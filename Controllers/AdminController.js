@@ -39,7 +39,7 @@ export const adminLogin = asyncHandler(async (req, res) => {
     await admin.save();
 
     // Generate JWT token with admin flag
-    const token = generateToken({ 
+    const token = generateToken({
         adminId: admin._id,
         username: admin.username,
         role: admin.role,
@@ -69,7 +69,7 @@ export const adminLogin = asyncHandler(async (req, res) => {
 export const createFirstAdmin = asyncHandler(async (req, res) => {
     // Check if any admin exists
     const adminCount = await Admin.countDocuments();
-    
+
     if (adminCount > 0) {
         throw new ApiError(403, 'Admin already exists. Use login instead.');
     }
@@ -95,7 +95,7 @@ export const createFirstAdmin = asyncHandler(async (req, res) => {
         }
     });
 
-    const token = generateToken({ 
+    const token = generateToken({
         adminId: admin._id,
         username: admin.username,
         role: admin.role,
@@ -423,13 +423,13 @@ export const rejectPayment = asyncHandler(async (req, res) => {
  */
 export const getDashboardStats = asyncHandler(async (req, res) => {
     const totalUsers = await User.countDocuments({ isActive: true });
-    const pendingPayments = await Transaction.countDocuments({ 
-        category: 'add_money', 
-        status: 'pending' 
+    const pendingPayments = await Transaction.countDocuments({
+        category: 'add_money',
+        status: 'pending'
     });
-    const pendingWithdrawals = await Transaction.countDocuments({ 
-        category: 'withdrawal', 
-        status: 'pending' 
+    const pendingWithdrawals = await Transaction.countDocuments({
+        category: 'withdrawal',
+        status: 'pending'
     });
 
     const todayTransactions = await Transaction.aggregate([
@@ -685,7 +685,7 @@ export const getUserStats = asyncHandler(async (req, res) => {
     const totalUsers = await User.countDocuments({ isActive: true });
     const verifiedUsers = await User.countDocuments({ isActive: true, isVerified: true });
     const kycPendingUsers = await User.countDocuments({ kycStatus: 'pending' });
-    
+
     const walletStats = await User.aggregate([
         { $match: { isActive: true } },
         {
@@ -716,3 +716,89 @@ export const getUserStats = asyncHandler(async (req, res) => {
         })
     );
 });
+
+
+
+/**
+ * ✅ Get Withdrawal Statistics
+ */
+export const getWithdrawalStats = asyncHandler(async (req, res) => {
+    // Get completed withdrawals stats
+    const completedWithdrawals = await Transaction.aggregate([
+        {
+            $match: {
+                category: 'withdrawal',
+                status: 'completed'
+            }
+        },
+        {
+            $group: {
+                _id: null,
+                totalWithdrawals: { $sum: '$amount' },
+                totalCount: { $sum: 1 }
+            }
+        }
+    ]);
+
+    // Get pending withdrawals stats
+    const pendingWithdrawals = await Transaction.aggregate([
+        {
+            $match: {
+                category: 'withdrawal',
+                status: 'pending'
+            }
+        },
+        {
+            $group: {
+                _id: null,
+                pendingAmount: { $sum: '$amount' },
+                pendingCount: { $sum: 1 }
+            }
+        }
+    ]);
+
+    // Get rejected withdrawals stats
+    const rejectedWithdrawals = await Transaction.aggregate([
+        {
+            $match: {
+                category: 'withdrawal',
+                status: 'rejected'
+            }
+        },
+        {
+            $group: {
+                _id: null,
+                rejectedAmount: { $sum: '$amount' },
+                rejectedCount: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const completedStats = completedWithdrawals[0] || {
+        totalWithdrawals: 0,
+        totalCount: 0
+    };
+
+    const pendingStats = pendingWithdrawals[0] || {
+        pendingAmount: 0,
+        pendingCount: 0
+    };
+
+    const rejectedStats = rejectedWithdrawals[0] || {
+        rejectedAmount: 0,
+        rejectedCount: 0
+    };
+
+    res.status(200).json(
+        new ApiResponse(200, {
+            totalWithdrawals: completedStats.totalWithdrawals,
+            totalCount: completedStats.totalCount,
+            pendingAmount: pendingStats.pendingAmount,
+            pendingCount: pendingStats.pendingCount,
+            rejectedAmount: rejectedStats.rejectedAmount,
+            rejectedCount: rejectedStats.rejectedCount,
+            grandTotal: completedStats.totalWithdrawals + pendingStats.pendingAmount
+        }, 'Withdrawal statistics fetched successfully')
+    );
+});
+
