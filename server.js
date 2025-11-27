@@ -4,7 +4,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-// import mongoSanitize from 'express-mongo-sanitize';
 import connectDB, { disconnectDB, getConnectionStats } from './Database/Db.js';
 import { dbHealthCheck, detailedHealthCheck } from './Middleware/dbHealthCheck.js';
 import {
@@ -14,12 +13,15 @@ import {
     handleUncaughtException
 } from './Middleware/ErrorHandler.js';
 
-
 // Routes
 import authRoutes from './Routes/AuthRoute.js';
 import walletRoutes from './Routes/WalletRoute.js';
 import adminRoutes from './Routes/AdminRoute.js';
-
+import userRoutes from './Routes/UserRoute.js';
+import indexRoutes from './Routes/IndexRoute.js';
+import stockRoutes from './Routes/StockRoute.js';
+import priceHistoryRoutes from './Routes/PriceHistoryRoute.js';
+import dailyHistoryRoutes from './Routes/DailyHistoryRoute.js';
 
 // Handle uncaught exceptions
 handleUncaughtException();
@@ -32,23 +34,31 @@ app.use(cors({
     origin: process.env.CLIENT_URL || '*',
     credentials: true
 }));
-// app.use(mongoSanitize());
 app.use(compression());
-
 
 // Body Parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-
-
 // Server testing 
 app.get('/', (req, res) => {
     res.status(200).json({
-        message: "API is working!"
+        message: "TradeHub API is working!",
+        version: "1.0.0",
+        endpoints: {
+            auth: "/api/v1/auth",
+            wallet: "/api/v1/wallet",
+            admin: "/api/v1/admin",
+            user: "/api/v1/user",
+            market: {
+                indices: "/api/v1/indices",
+                stocks: "/api/v1/stocks",
+                priceHistory: "/api/v1/price-history",
+                dailyHistory: "/api/v1/daily-history"
+            }
+        }
     })
-})
-
+});
 
 // Health Check Routes
 app.get('/health', detailedHealthCheck);
@@ -68,15 +78,22 @@ app.get('/health/db-stats', (req, res) => {
 // Apply DB health check to API routes
 app.use('/api', dbHealthCheck);
 
-// Routes
+// ==================== ROUTES ====================
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/wallet', walletRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/user', userRoutes);
+
+// ✅ Market Data Routes (Public)
+app.use('/api/v1/indices', indexRoutes);
+app.use('/api/v1/stocks', stockRoutes);
+app.use('/api/v1/price-history', priceHistoryRoutes);
+app.use('/api/v1/daily-history', dailyHistoryRoutes);
 
 // 404 Handler
 app.use(notFound);
 
-// Global Error Handlerr
+// Global Error Handler
 app.use(errorHandler);
 
 // Connect to MongoDB
@@ -110,6 +127,8 @@ const server = app.listen(PORT, () => {
     console.log(`📡 Server running on port: ${PORT}`);
     console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🌐 Health Check: http://localhost:${PORT}/health`);
+    console.log(`📊 Admin API: http://localhost:${PORT}/api/v1/admin`);
+    console.log(`📈 Market API: http://localhost:${PORT}/api/v1/indices`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 });
 

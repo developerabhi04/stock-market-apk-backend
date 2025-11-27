@@ -107,88 +107,88 @@ export const addMoney = asyncHandler(async (req, res) => {
 /**
  * ✅ UPDATED: Withdraw Money (Creates Pending Request)
  */
-export const withdrawMoney = asyncHandler(async (req, res) => {
-    const { amount, accountNumber, ifscCode, accountHolderName, bankName } = req.body;
+// export const withdrawMoney = asyncHandler(async (req, res) => {
+//     const { amount, accountNumber, ifscCode, accountHolderName, bankName } = req.body;
 
-    // Validation
-    if (!amount || amount < 100) {
-        throw new ApiError(400, 'Minimum withdrawal amount is ₹100');
-    }
+//     // Validation
+//     if (!amount || amount < 100) {
+//         throw new ApiError(400, 'Minimum withdrawal amount is ₹100');
+//     }
 
-    if (!accountNumber || !ifscCode || !accountHolderName || !bankName) {
-        throw new ApiError(400, 'All bank details are required');
-    }
+//     if (!accountNumber || !ifscCode || !accountHolderName || !bankName) {
+//         throw new ApiError(400, 'All bank details are required');
+//     }
 
-    const session = await mongoose.startSession();
-    session.startTransaction({
-        readPreference: 'primary',
-        readConcern: { level: 'majority' },
-        writeConcern: { w: 'majority' }
-    });
+//     const session = await mongoose.startSession();
+//     session.startTransaction({
+//         readPreference: 'primary',
+//         readConcern: { level: 'majority' },
+//         writeConcern: { w: 'majority' }
+//     });
 
-    try {
-        const user = await User.findById(req.user.userId)
-            .session(session)
-            .read('primary');
+//     try {
+//         const user = await User.findById(req.user.userId)
+//             .session(session)
+//             .read('primary');
 
-        if (!user) {
-            throw new ApiError(404, 'User not found');
-        }
+//         if (!user) {
+//             throw new ApiError(404, 'User not found');
+//         }
 
-        // ✅ Check if user has enough withdrawable balance
-        if (user.walletBalance < amount) {
-            throw new ApiError(400,
-                `Insufficient withdrawable balance. Available: ₹${user.walletBalance.toFixed(2)}`
-            );
-        }
+//         // ✅ Check if user has enough withdrawable balance
+//         if (user.walletBalance < amount) {
+//             throw new ApiError(400,
+//                 `Insufficient withdrawable balance. Available: ₹${user.walletBalance.toFixed(2)}`
+//             );
+//         }
 
-        const balanceBefore = user.walletBalance;
-        const balanceAfter = balanceBefore - amount;
+//         const balanceBefore = user.walletBalance;
+//         const balanceAfter = balanceBefore - amount;
 
-        // ✅ Deduct money immediately but mark as pending
-        user.walletBalance = balanceAfter;
-        await user.save({ session });
+//         // ✅ Deduct money immediately but mark as pending
+//         user.walletBalance = balanceAfter;
+//         await user.save({ session });
 
-        // ✅ Create pending withdrawal transaction
-        const transaction = await Transaction.create([{
-            userId: user._id,
-            type: 'debit',
-            category: 'withdrawal',
-            amount,
-            balanceBefore,
-            balanceAfter,
-            bonusBalanceBefore: user.bonusBalance,
-            bonusBalanceAfter: user.bonusBalance,
-            status: 'pending', // ✅ Pending admin approval
-            withdrawalDetails: {
-                accountNumber,
-                ifscCode,
-                accountHolderName,
-                bankName
-            },
-            description: 'Withdrawal request submitted - Awaiting admin approval',
-            adminAction: {
-                actionType: 'pending'
-            }
-        }], { session });
+//         // ✅ Create pending withdrawal transaction
+//         const transaction = await Transaction.create([{
+//             userId: user._id,
+//             type: 'debit',
+//             category: 'withdrawal',
+//             amount,
+//             balanceBefore,
+//             balanceAfter,
+//             bonusBalanceBefore: user.bonusBalance,
+//             bonusBalanceAfter: user.bonusBalance,
+//             status: 'pending', // ✅ Pending admin approval
+//             withdrawalDetails: {
+//                 accountNumber,
+//                 ifscCode,
+//                 accountHolderName,
+//                 bankName
+//             },
+//             description: 'Withdrawal request submitted - Awaiting admin approval',
+//             adminAction: {
+//                 actionType: 'pending'
+//             }
+//         }], { session });
 
-        await session.commitTransaction();
+//         await session.commitTransaction();
 
-        res.status(200).json(
-            new ApiResponse(200, {
-                transaction: transaction[0],
-                newBalance: balanceAfter + user.bonusBalance,
-                message: 'Withdrawal request submitted successfully. Amount will be transferred within 1-3 business days after approval.'
-            })
-        );
+//         res.status(200).json(
+//             new ApiResponse(200, {
+//                 transaction: transaction[0],
+//                 newBalance: balanceAfter + user.bonusBalance,
+//                 message: 'Withdrawal request submitted successfully. Amount will be transferred within 1-3 business days after approval.'
+//             })
+//         );
 
-    } catch (error) {
-        await session.abortTransaction();
-        throw error;
-    } finally {
-        session.endSession();
-    }
-});
+//     } catch (error) {
+//         await session.abortTransaction();
+//         throw error;
+//     } finally {
+//         session.endSession();
+//     }
+// });
 
 
 /**
@@ -219,3 +219,103 @@ export const getTransactions = asyncHandler(async (req, res) => {
         })
     );
 });
+
+
+/**
+ * ✅ UPDATED: Withdraw Money with Bank Account Selection
+ */
+export const withdrawMoney = asyncHandler(async (req, res) => {
+    const { amount, accountNumber, ifscCode, accountHolderName, bankName } = req.body;
+
+    // Validation
+    if (!amount || amount < 100) {
+        throw new ApiError(400, 'Minimum withdrawal amount is ₹100');
+    }
+
+    if (!accountNumber || !ifscCode || !accountHolderName || !bankName) {
+        throw new ApiError(400, 'All bank details are required');
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction({
+        readPreference: 'primary',
+        readConcern: { level: 'majority' },
+        writeConcern: { w: 'majority' }
+    });
+
+    try {
+        const user = await User.findById(req.user.userId)
+            .session(session)
+            .read('primary');
+
+        if (!user) {
+            throw new ApiError(404, 'User not found');
+        }
+
+        // ✅ Verify that the bank account exists in user's accounts
+        const bankAccountExists = user.bankAccounts.some(
+            account => account.accountNumber === accountNumber
+        );
+
+        if (!bankAccountExists && user.bankAccounts.length > 0) {
+            throw new ApiError(400, 'Please select a registered bank account');
+        }
+
+        // Check if user has enough withdrawable balance
+        if (user.walletBalance < amount) {
+            throw new ApiError(400,
+                `Insufficient withdrawable balance. Available: ₹${user.walletBalance.toFixed(2)} (Bonus: ₹${user.bonusBalance.toFixed(2)} cannot be withdrawn)`
+            );
+        }
+
+        const balanceBefore = user.walletBalance;
+        const balanceAfter = balanceBefore - amount;
+
+        // Deduct money immediately but mark as pending
+        user.walletBalance = balanceAfter;
+        await user.save({ session });
+
+        // Create pending withdrawal transaction
+        const transaction = await Transaction.create([{
+            userId: user._id,
+            type: 'debit',
+            category: 'withdrawal',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            bonusBalanceBefore: user.bonusBalance,
+            bonusBalanceAfter: user.bonusBalance,
+            status: 'pending',
+            withdrawalDetails: {
+                accountNumber,
+                ifscCode: ifscCode.toUpperCase(),
+                accountHolderName,
+                bankName
+            },
+            description: `Withdrawal to ${bankName} (${accountNumber.slice(-4)}) - Awaiting admin approval`,
+            adminAction: {
+                actionType: 'pending'
+            }
+        }], { session });
+
+        await session.commitTransaction();
+
+        console.log('✅ Withdrawal request created:', transaction[0]._id);
+
+        res.status(200).json(
+            new ApiResponse(200, {
+                transaction: transaction[0],
+                newWalletBalance: balanceAfter,
+                newTotalBalance: balanceAfter + user.bonusBalance,
+                message: 'Withdrawal request submitted successfully. Amount will be transferred within 1-3 business days after approval.'
+            })
+        );
+
+    } catch (error) {
+        await session.abortTransaction();
+        throw error;
+    } finally {
+        session.endSession();
+    }
+});
+

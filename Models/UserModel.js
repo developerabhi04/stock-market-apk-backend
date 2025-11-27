@@ -36,6 +36,7 @@ const userSchema = new mongoose.Schema({
         documentUrl: String,
         verifiedAt: Date
     },
+    // ✅ DEPRECATED: Keep for backward compatibility
     bankDetails: {
         accountNumber: String,
         ifscCode: String,
@@ -43,18 +44,63 @@ const userSchema = new mongoose.Schema({
         bankName: String,
         verifiedAt: Date
     },
-    // ✅ NEW: Separate wallet balances
+    // ✅ NEW: Multiple bank accounts (max 3)
+    bankAccounts: [{
+        bankName: {
+            type: String,
+            required: true,
+            trim: true
+        },
+        accountHolderName: {
+            type: String,
+            required: true,
+            trim: true
+        },
+        accountNumber: {
+            type: String,
+            required: true,
+            trim: true
+        },
+        ifscCode: {
+            type: String,
+            required: true,
+            trim: true,
+            uppercase: true,
+            match: [/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code format']
+        },
+        accountType: {
+            type: String,
+            enum: ['Savings', 'Current'],
+            default: 'Savings'
+        },
+        isPrimary: {
+            type: Boolean,
+            default: false
+        },
+        isVerified: {
+            type: Boolean,
+            default: false
+        },
+        verifiedAt: {
+            type: Date
+        },
+        addedAt: {
+            type: Date,
+            default: Date.now
+        }
+    }],
+    // Wallet balances
     walletBalance: {
         type: Number,
         default: 0,
         min: 0
     },
-    bonusBalance: {  // ✅ NEW: Signup bonus (non-withdrawable)
+    bonusBalance: {
         type: Number,
         default: 0,
         min: 0
     },
-    signupBonusReceived: {  // ✅ NEW: Track if bonus already given
+    signupBonusReceived: {
         type: Boolean,
         default: false
     },
@@ -73,23 +119,32 @@ const userSchema = new mongoose.Schema({
 // Indexes
 userSchema.index({ isVerified: 1, isActive: 1 });
 userSchema.index({ createdAt: -1 });
+userSchema.index({ 'bankAccounts.accountNumber': 1 });
 
-// ✅ Virtual for total available balance
+// ✅ Validation: Max 3 bank accounts
+userSchema.pre('save', function(next) {
+    if (this.bankAccounts && this.bankAccounts.length > 3) {
+        next(new Error('Maximum 3 bank accounts allowed'));
+    }
+    next();
+});
+
+// Virtual for total available balance
 userSchema.virtual('totalBalance').get(function() {
     return this.walletBalance + this.bonusBalance;
 });
 
-// ✅ Virtual for withdrawable balance (only main wallet)
+// Virtual for withdrawable balance (only main wallet)
 userSchema.virtual('withdrawableBalance').get(function() {
     return this.walletBalance;
 });
 
-// ✅ Method to check if user can trade
+// Method to check if user can trade
 userSchema.methods.canTrade = function() {
-    return this.isVerified && this.totalBalance >= 10; // Minimum ₹10 to trade
+    return this.isVerified && this.totalBalance >= 10;
 };
 
-// ✅ Method to deduct money (uses bonus first, then main wallet)
+// Method to deduct money (uses bonus first, then main wallet)
 userSchema.methods.deductAmount = function(amount) {
     if (this.totalBalance < amount) {
         throw new Error('Insufficient balance');
@@ -115,6 +170,11 @@ userSchema.methods.deductAmount = function(amount) {
         newBonusBalance: this.bonusBalance,
         newWalletBalance: this.walletBalance
     };
+};
+
+// ✅ Method to get primary bank account
+userSchema.methods.getPrimaryBankAccount = function() {
+    return this.bankAccounts.find(account => account.isPrimary) || this.bankAccounts[0];
 };
 
 // Static method to find user by phone

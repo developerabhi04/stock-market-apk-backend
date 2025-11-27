@@ -1,7 +1,7 @@
 import express from 'express';
 import { rateLimiter } from '../Middleware/RateLimiter.js';
-import { getUserProfile, resendLoginOTP, resendSignupOTP, sendLoginOTP, sendSignupOTP, updateUserProfile, verifyLoginOTP, verifySignupOTP } from '../Controllers/AuthController.js';
-import { authenticate } from '../Middleware/Auth.js';
+import {resendLoginOTP, resendSignupOTP, sendLoginOTP, sendSignupOTP, verifyLoginOTP, verifySignupOTP } from '../Controllers/AuthController.js';
+
 
 const router = express.Router();
 
@@ -15,11 +15,6 @@ router.post('/signup/send-otp', rateLimiter(3, 15), sendSignupOTP);
 router.post('/signup/verify-otp', rateLimiter(5, 15), verifySignupOTP);
 router.post('/signup/resend-otp', rateLimiter(3, 10), resendSignupOTP);
 
-router.use(authenticate);
-
-// Profile routes
-router.get('/profile', getUserProfile);
-router.put('/profile', updateUserProfile);
 
 
 export default router;

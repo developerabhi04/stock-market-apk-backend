@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 import User from '../Models/UserModel.js';
 import Transaction from '../Models/TransactionModel.js';
 import Admin from '../Models/AdminModel.js';
+import Stock from '../Models/StockModel.js';
+import Index from '../Models/IndexModel.js';
+import PriceHistory from '../Models/PriceHistoryModel.js';
+import DailyHistory from '../Models/DailyHistoryModel.js';
 import { generateToken } from '../Utils/JwtService.js';
 import { ApiError } from '../Utils/apiError.js';
 import { ApiResponse } from '../Utils/apiResponse.js';
@@ -801,4 +805,598 @@ export const getWithdrawalStats = asyncHandler(async (req, res) => {
         }, 'Withdrawal statistics fetched successfully')
     );
 });
+
+
+
+
+// ==================== MARKET DATA MANAGEMENT ====================
+
+/**
+ * ✅ Get Market Dashboard Stats
+ */
+export const getMarketDashboardStats = asyncHandler(async (req, res) => {
+    // Count all market entities
+    const totalIndices = await Index.countDocuments({ isActive: true });
+    const totalStocks = await Stock.countDocuments({ isActive: true });
+    const featuredIndices = await Index.countDocuments({ isFeatured: true, isActive: true });
+    const featuredStocks = await Stock.countDocuments({ isFeatured: true, isActive: true });
+
+    // Count price histories
+    const totalPriceHistories = await PriceHistory.countDocuments();
+    const totalDailyHistories = await DailyHistory.countDocuments();
+
+    // Get category breakdown for stocks
+    const stockCategories = await Stock.aggregate([
+        { $match: { isActive: true } },
+        {
+            $group: {
+                _id: '$category',
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    // Get category breakdown for indices
+    const indexCategories = await Index.aggregate([
+        { $match: { isActive: true } },
+        {
+            $group: {
+                _id: '$category',
+                count: { $sum: 1 }
+            }
+        }
+    ]);
+
+    res.status(200).json(
+        new ApiResponse(200, {
+            market: {
+                totalIndices,
+                totalStocks,
+                featuredIndices,
+                featuredStocks,
+                totalPriceHistories,
+                totalDailyHistories
+            },
+            breakdown: {
+                stocks: stockCategories,
+                indices: indexCategories
+            }
+        })
+    );
+});
+
+/**
+ * ✅ Get All Indices (Admin)
+ */
+export const getAllIndicesAdmin = asyncHandler(async (req, res) => {
+    const { category, featured, active, page = 1, limit = 50 } = req.query;
+
+    const filter = {};
+    if (category) filter.category = category;
+    if (featured !== undefined) filter.isFeatured = featured === 'true';
+    if (active !== undefined) filter.isActive = active === 'true';
+
+    const indices = await Index.find(filter)
+        .sort({ isFeatured: -1, currentValue: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean();
+
+    const count = await Index.countDocuments(filter);
+
+    res.status(200).json(
+        new ApiResponse(200, {
+            indices,
+            totalPages: Math.ceil(count / limit),
+            currentPage: parseInt(page),
+            total: count
+        })
+    );
+});
+
+/**
+ * ✅ Create Index (Admin)
+ */
+export const createIndex = asyncHandler(async (req, res) => {
+    const {
+        name,
+        symbol,
+        category,
+        currentValue,
+        openValue,
+        highValue,
+        lowValue,
+        previousClose,
+        icon,
+        isFeatured,
+        marketCap,
+        volume,
+        description
+    } = req.body;
+
+    // Validation
+    if (!name || !symbol || !category || !currentValue || !openValue || !highValue || !lowValue || !previousClose) {
+        throw new ApiError(400, 'All required fields must be provided');
+    }
+
+    // Check if index already exists
+    const existingIndex = await Index.findOne({ symbol: symbol.toUpperCase() });
+    if (existingIndex) {
+        throw new ApiError(409, 'Index with this symbol already exists');
+    }
+
+    // Calculate change
+    const change = currentValue - previousClose;
+    const changePercent = ((change / previousClose) * 100).toFixed(2);
+
+    const index = await Index.create({
+        name: name.trim(),
+        symbol: symbol.toUpperCase().trim(),
+        category,
+        currentValue,
+        openValue,
+        highValue,
+        lowValue,
+        previousClose,
+        change,
+        changePercent,
+        icon: icon || 'chart-line',
+        isFeatured: isFeatured || false,
+        marketCap,
+        volume,
+        description,
+        isActive: true
+    });
+
+    res.status(201).json(
+        new ApiResponse(201, { index }, 'Index created successfully')
+    );
+});
+
+/**
+ * ✅ Update Index (Admin)
+ */
+export const updateIndex = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const index = await Index.findById(id);
+
+    if (!index) {
+        throw new ApiError(404, 'Index not found');
+    }
+
+    // If currentValue is being updated, recalculate change
+    if (updateData.currentValue) {
+        updateData.change = updateData.currentValue - (updateData.previousClose || index.previousClose);
+        updateData.changePercent = ((updateData.change / (updateData.previousClose || index.previousClose)) * 100).toFixed(2);
+        updateData.lastUpdated = new Date();
+    }
+
+    Object.assign(index, updateData);
+    await index.save();
+
+    res.status(200).json(
+        new ApiResponse(200, { index }, 'Index updated successfully')
+    );
+});
+
+/**
+ * ✅ Delete Index (Admin)
+ */
+export const deleteIndex = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const index = await Index.findByIdAndDelete(id);
+
+    if (!index) {
+        throw new ApiError(404, 'Index not found');
+    }
+
+    // Also delete related price histories
+    await PriceHistory.deleteMany({ ticker: index.symbol, type: 'Index' });
+    await DailyHistory.deleteMany({ ticker: index.symbol });
+
+    res.status(200).json(
+        new ApiResponse(200, null, 'Index and related data deleted successfully')
+    );
+});
+
+/**
+ * ✅ Get All Stocks (Admin)
+ */
+export const getAllStocksAdmin = asyncHandler(async (req, res) => {
+    const { category, featured, active, sector, page = 1, limit = 50 } = req.query;
+
+    const filter = {};
+    if (category) filter.category = category;
+    if (featured !== undefined) filter.isFeatured = featured === 'true';
+    if (active !== undefined) filter.isActive = active === 'true';
+    if (sector) filter.sector = sector;
+
+    const stocks = await Stock.find(filter)
+        .sort({ isFeatured: -1, price: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean();
+
+    const count = await Stock.countDocuments(filter);
+
+    res.status(200).json(
+        new ApiResponse(200, {
+            stocks,
+            totalPages: Math.ceil(count / limit),
+            currentPage: parseInt(page),
+            total: count
+        })
+    );
+});
+
+/**
+ * ✅ Create Stock (Admin)
+ */
+export const createStock = asyncHandler(async (req, res) => {
+    const {
+        name,
+        ticker,
+        symbol,
+        price,
+        openPrice,
+        highPrice,
+        lowPrice,
+        previousClose,
+        volume,
+        marketCap,
+        sector,
+        category,
+        isFeatured,
+        icon,
+        description
+    } = req.body;
+
+    // Validation
+    if (!name || !ticker || !symbol || !price || !openPrice || !highPrice || !lowPrice || !previousClose) {
+        throw new ApiError(400, 'All required fields must be provided');
+    }
+
+    // Check if stock already exists
+    const existingStock = await Stock.findOne({ ticker: ticker.toUpperCase() });
+    if (existingStock) {
+        throw new ApiError(409, 'Stock with this ticker already exists');
+    }
+
+    // Calculate change
+    const change = price - previousClose;
+    const changePercent = ((change / previousClose) * 100).toFixed(2);
+
+    const stock = await Stock.create({
+        name: name.trim(),
+        ticker: ticker.toUpperCase().trim(),
+        symbol: symbol.toUpperCase().trim(),
+        price,
+        openPrice,
+        highPrice,
+        lowPrice,
+        previousClose,
+        change,
+        changePercent,
+        volume: volume || 0,
+        marketCap,
+        sector,
+        category: category || 'Stock',
+        isFeatured: isFeatured || false,
+        icon: icon || 'chart-line',
+        description,
+        isActive: true
+    });
+
+    res.status(201).json(
+        new ApiResponse(201, { stock }, 'Stock created successfully')
+    );
+});
+
+/**
+ * ✅ Update Stock (Admin)
+ */
+export const updateStock = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const stock = await Stock.findById(id);
+
+    if (!stock) {
+        throw new ApiError(404, 'Stock not found');
+    }
+
+    // If price is being updated, recalculate change
+    if (updateData.price) {
+        updateData.change = updateData.price - (updateData.previousClose || stock.previousClose);
+        updateData.changePercent = ((updateData.change / (updateData.previousClose || stock.previousClose)) * 100).toFixed(2);
+        updateData.lastUpdated = new Date();
+    }
+
+    Object.assign(stock, updateData);
+    await stock.save();
+
+    res.status(200).json(
+        new ApiResponse(200, { stock }, 'Stock updated successfully')
+    );
+});
+
+/**
+ * ✅ Delete Stock (Admin)
+ */
+export const deleteStock = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+
+    const stock = await Stock.findByIdAndDelete(id);
+
+    if (!stock) {
+        throw new ApiError(404, 'Stock not found');
+    }
+
+    // Also delete related price histories
+    await PriceHistory.deleteMany({ ticker: stock.ticker, type: 'Stock' });
+    await DailyHistory.deleteMany({ ticker: stock.ticker });
+
+    res.status(200).json(
+        new ApiResponse(200, null, 'Stock and related data deleted successfully')
+    );
+});
+
+/**
+ * ✅ Bulk Update Prices (Admin)
+ */
+export const bulkUpdatePrices = asyncHandler(async (req, res) => {
+    const { updates, type = 'Stock' } = req.body;
+
+    if (!Array.isArray(updates) || updates.length === 0) {
+        throw new ApiError(400, 'Updates array is required');
+    }
+
+    const results = [];
+    const Model = type === 'Index' ? Index : Stock;
+    const identifierField = type === 'Index' ? 'symbol' : 'ticker';
+
+    for (const update of updates) {
+        try {
+            const identifier = update[identifierField];
+            const entity = await Model.findOne({ [identifierField]: identifier.toUpperCase() });
+
+            if (entity) {
+                const newPrice = type === 'Index' ? update.currentValue : update.price;
+
+                if (type === 'Index') {
+                    await entity.updatePrice(newPrice);
+                } else {
+                    await entity.updatePrice(newPrice);
+                }
+
+                results.push({ [identifierField]: identifier, success: true });
+            } else {
+                results.push({ [identifierField]: identifier, success: false, message: 'Not found' });
+            }
+        } catch (error) {
+            results.push({ [identifierField]: update[identifierField], success: false, message: error.message });
+        }
+    }
+
+    res.status(200).json(
+        new ApiResponse(200, { results }, 'Bulk update completed')
+    );
+});
+
+/**
+ * ✅ Generate Sample Chart Data (Admin)
+ */
+export const generateSampleChartData = asyncHandler(async (req, res) => {
+    const { ticker, type, period, basePrice, days } = req.body;
+
+    if (!ticker || !type || !period || !basePrice || !days) {
+        throw new ApiError(400, 'All fields are required');
+    }
+
+    const data = [];
+    let currentPrice = basePrice;
+    const now = new Date();
+
+    for (let i = days; i >= 0; i--) {
+        const timestamp = new Date(now);
+        timestamp.setDate(timestamp.getDate() - i);
+
+        // Random price change (-2% to +2%)
+        const change = (Math.random() - 0.5) * 0.04 * currentPrice;
+        currentPrice = Math.max(currentPrice + change, basePrice * 0.8);
+
+        data.push({
+            timestamp,
+            value: parseFloat(currentPrice.toFixed(2)),
+            volume: Math.floor(Math.random() * 1000000) + 100000,
+            label: timestamp.toLocaleDateString('en-IN', {
+                month: 'short',
+                day: 'numeric'
+            })
+        });
+    }
+
+    const history = await PriceHistory.findOneAndUpdate(
+        {
+            ticker: ticker.toUpperCase(),
+            period: period.toUpperCase()
+        },
+        {
+            ticker: ticker.toUpperCase(),
+            type,
+            period: period.toUpperCase(),
+            data,
+            lastUpdated: new Date()
+        },
+        {
+            upsert: true,
+            new: true,
+            runValidators: true
+        }
+    );
+
+    res.status(200).json(
+        new ApiResponse(200, { history }, 'Sample chart data generated successfully')
+    );
+});
+
+/**
+ * ✅ Generate Sample Daily History (Admin)
+ */
+export const generateSampleDailyHistory = asyncHandler(async (req, res) => {
+    const { ticker, startDate, days, basePrice } = req.body;
+
+    if (!ticker || !startDate || !days || !basePrice) {
+        throw new ApiError(400, 'All fields are required');
+    }
+
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const histories = [];
+    let currentPrice = basePrice;
+    const start = new Date(startDate);
+
+    for (let i = 0; i < days; i++) {
+        const date = new Date(start);
+        date.setDate(date.getDate() + i);
+
+        // Skip weekends
+        if (date.getDay() === 0 || date.getDay() === 6) {
+            continue;
+        }
+
+        const dayName = daysOfWeek[date.getDay() - 1];
+
+        const openChange = (Math.random() - 0.5) * 0.1 * currentPrice;
+        const open = Math.max(currentPrice + openChange, basePrice * 0.5);
+
+        const closeChange = (Math.random() - 0.5) * 0.08 * open;
+        const close = Math.max(open + closeChange, basePrice * 0.5);
+
+        const high = Math.max(open, close) * (1 + Math.random() * 0.03);
+        const low = Math.min(open, close) * (1 - Math.random() * 0.03);
+
+        const change = close - open;
+        const changePercent = ((change / open) * 100).toFixed(2);
+
+        histories.push({
+            ticker: ticker.toUpperCase(),
+            date,
+            day: dayName,
+            open: parseFloat(open.toFixed(2)),
+            close: parseFloat(close.toFixed(2)),
+            high: parseFloat(high.toFixed(2)),
+            low: parseFloat(low.toFixed(2)),
+            volume: Math.floor(Math.random() * 1000000) + 100000,
+            change: parseFloat(change.toFixed(2)),
+            changePercent: parseFloat(changePercent)
+        });
+
+        currentPrice = close;
+    }
+
+    const created = await DailyHistory.insertMany(histories);
+
+    res.status(201).json(
+        new ApiResponse(201, {
+            count: created.length,
+            histories: created
+        }, 'Sample daily history generated successfully')
+    );
+});
+
+/**
+ * ✅ Get Complete Dashboard Stats (Including Market Data)
+ */
+export const getCompleteDashboardStats = asyncHandler(async (req, res) => {
+    // User Stats
+    const totalUsers = await User.countDocuments({ isActive: true });
+    const verifiedUsers = await User.countDocuments({ isVerified: true, isActive: true });
+    const newUsersToday = await User.countDocuments({
+        isActive: true,
+        createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+    });
+
+    // Financial Stats
+    const users = await User.find({ isActive: true }).select('walletBalance bonusBalance');
+    const totalWalletBalance = users.reduce((sum, user) => sum + (user.walletBalance || 0), 0);
+    const totalBonusBalance = users.reduce((sum, user) => sum + (user.bonusBalance || 0), 0);
+    const grandTotal = totalWalletBalance + totalBonusBalance;
+
+    // Transaction Stats
+    const pendingPayments = await Transaction.countDocuments({
+        category: 'add_money',
+        status: 'pending'
+    });
+
+    const pendingWithdrawals = await Transaction.countDocuments({
+        category: 'withdrawal',
+        status: 'pending'
+    });
+
+    const completedWithdrawals = await Transaction.aggregate([
+        { $match: { category: 'withdrawal', status: 'completed' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+
+    const totalWithdrawals = completedWithdrawals[0]?.total || 0;
+
+    // Market Data Stats
+    const totalIndices = await Index.countDocuments({ isActive: true });
+    const totalStocks = await Stock.countDocuments({ isActive: true });
+    const featuredIndices = await Index.countDocuments({ isFeatured: true, isActive: true });
+    const featuredStocks = await Stock.countDocuments({ isFeatured: true, isActive: true });
+    const totalPriceHistories = await PriceHistory.countDocuments();
+    const totalDailyHistories = await DailyHistory.countDocuments();
+
+    // Today's transactions
+    const todayTransactions = await Transaction.aggregate([
+        {
+            $match: {
+                createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+            }
+        },
+        {
+            $group: {
+                _id: '$category',
+                count: { $sum: 1 },
+                total: { $sum: '$amount' }
+            }
+        }
+    ]);
+
+    res.status(200).json(
+        new ApiResponse(200, {
+            users: {
+                total: totalUsers,
+                verified: verifiedUsers,
+                newToday: newUsersToday,
+                verificationRate: ((verifiedUsers / totalUsers) * 100).toFixed(2)
+            },
+            financial: {
+                totalWalletBalance,
+                totalBonusBalance,
+                grandTotal,
+                totalWithdrawals,
+                netBalance: totalWalletBalance - totalWithdrawals
+            },
+            transactions: {
+                pendingPayments,
+                pendingWithdrawals,
+                todayTransactions
+            },
+            market: {
+                totalIndices,
+                totalStocks,
+                featuredIndices,
+                featuredStocks,
+                totalPriceHistories,
+                totalDailyHistories
+            }
+        })
+    );
+});
+
 
