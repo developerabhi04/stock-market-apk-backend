@@ -12,12 +12,19 @@ export const authenticateAdmin = asyncHandler(async (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Check if admin (you can add admin role check here)
+        // Check if admin
         if (!decoded.isAdmin) {
             throw new ApiError(403, 'Admin access required');
         }
 
-        req.admin = decoded;
+        // ✅ Attach admin info to request (includes role)
+        req.admin = {
+            adminId: decoded.adminId,
+            username: decoded.username,
+            role: decoded.role,  // ✅ This is already being sent from login
+            isAdmin: decoded.isAdmin
+        };
+
         next();
     } catch (error) {
         throw new ApiError(401, 'Invalid or expired admin token');

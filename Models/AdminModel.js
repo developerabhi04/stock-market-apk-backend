@@ -28,7 +28,7 @@ const adminSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['super_admin', 'admin', 'moderator'],
+        enum: ['super_admin', 'payment_manager', 'admin', 'moderator'],  // ✅ Added payment_manager
         default: 'admin'
     },
     isActive: {
@@ -63,20 +63,20 @@ const adminSchema = new mongoose.Schema({
 });
 
 // Hash password before saving
-adminSchema.pre('save', async function(next) {
+adminSchema.pre('save', async function (next) {
     if (!this.isModified('password')) return next();
-    
+
     this.password = await bcrypt.hash(this.password, 10);
     next();
 });
 
 // Method to compare password
-adminSchema.methods.comparePassword = async function(candidatePassword) {
+adminSchema.methods.comparePassword = async function (candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
 };
 
 // Static method to find by username
-adminSchema.statics.findByUsername = function(username) {
+adminSchema.statics.findByUsername = function (username) {
     return this.findOne({ username, isActive: true });
 };
 

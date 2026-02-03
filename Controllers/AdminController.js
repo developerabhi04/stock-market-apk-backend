@@ -1400,3 +1400,99 @@ export const getCompleteDashboardStats = asyncHandler(async (req, res) => {
 });
 
 
+
+/**
+ * ✅ Create Payment Manager (Super Admin Only)
+ */
+export const createPaymentManager = asyncHandler(async (req, res) => {
+    const { username, email, password, fullName } = req.body;
+
+    // Validate
+    if (!username || !email || !password || !fullName) {
+        throw new ApiError(400, 'All fields are required');
+    }
+
+    // Check if already exists
+    const existingAdmin = await Admin.findOne({
+        $or: [{ username }, { email }]
+    });
+
+    if (existingAdmin) {
+        throw new ApiError(409, 'Username or email already exists');
+    }
+
+    // Create payment manager
+    const paymentManager = await Admin.create({
+        username,
+        email,
+        password,
+        fullName,
+        role: 'payment_manager',
+        permissions: {
+            canApprovePayments: true,
+            canRejectPayments: true,
+            canViewUsers: false,
+            canManageAdmins: false
+        },
+        createdBy: req.admin.adminId
+    });
+
+    res.status(201).json(
+        new ApiResponse(201, {
+            admin: {
+                id: paymentManager._id,
+                username: paymentManager.username,
+                fullName: paymentManager.fullName,
+                email: paymentManager.email,
+                role: paymentManager.role
+            }
+        }, 'Payment Manager created successfully')
+    );
+});
+
+/**
+ * ✅ Get All Admins (Super Admin Only)
+ */
+export const getAllAdmins = asyncHandler(async (req, res) => {
+    const admins = await Admin.find({ isActive: true })
+        .select('-password')
+        .populate('createdBy', 'username fullName')
+        .sort({ createdAt: -1 })
+        .lean();
+
+    res.status(200).json(
+        new ApiResponse(200, { admins }, 'Admins fetched successfully')
+    );
+});
+
+/**
+ * ✅ Delete Admin (Super Admin Only)
+ */
+export const deleteAdmin = asyncHandler(async (req, res) => {
+    const { adminId } = req.params;
+
+    // Cannot delete yourself
+    if (adminId === req.admin.adminId.toString()) {
+        throw new ApiError(400, 'You cannot delete yourself');
+    }
+
+    const admin = await Admin.findById(adminId);
+
+    if (!admin) {
+        throw new ApiError(404, 'Admin not found');
+    }
+
+    // Cannot delete another super admin
+    if (admin.role === 'super_admin') {
+        throw new ApiError(403, 'Cannot delete super admin');
+    }
+
+    admin.isActive = false;
+    await admin.save();
+
+    res.status(200).json(
+        new ApiResponse(200, null, 'Admin deleted successfully')
+    );
+});
+
+
