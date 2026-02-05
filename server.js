@@ -4,6 +4,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+// ✅ ADD THESE IMPORTS
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+// ✅ END OF NEW IMPORTS
+
 import connectDB, { disconnectDB, getConnectionStats } from './Database/Db.js';
 import { dbHealthCheck, detailedHealthCheck } from './Middleware/dbHealthCheck.js';
 import {
@@ -12,6 +18,8 @@ import {
     handleUnhandledRejection,
     handleUncaughtException
 } from './Middleware/ErrorHandler.js';
+import bannerRoutes from './Routes/BannerRoute.js';
+import notificationRoutes from './Routes/NotificationRoute.js';
 
 // Routes
 import authRoutes from './Routes/AuthRoute.js';
@@ -22,6 +30,11 @@ import indexRoutes from './Routes/IndexRoute.js';
 import stockRoutes from './Routes/StockRoute.js';
 import priceHistoryRoutes from './Routes/PriceHistoryRoute.js';
 import dailyHistoryRoutes from './Routes/DailyHistoryRoute.js';
+import categoryRoutes from './Routes/CategoryRoute.js';
+
+// ✅ Get __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Handle uncaught exceptions
 handleUncaughtException();
@@ -40,6 +53,13 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// ✅ Serve static files with CORS headers
+app.use('/uploads', (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    next();
+}, express.static(path.join(__dirname, 'uploads')));
+
 // Server testing 
 app.get('/', (req, res) => {
     res.status(200).json({
@@ -50,6 +70,7 @@ app.get('/', (req, res) => {
             wallet: "/api/v1/wallet",
             admin: "/api/v1/admin",
             user: "/api/v1/user",
+            banners: "/api/v1/banners",
             market: {
                 indices: "/api/v1/indices",
                 stocks: "/api/v1/stocks",
@@ -83,12 +104,15 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/wallet', walletRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/user', userRoutes);
+app.use('/api/v1/admin/categories', categoryRoutes);
 
 // ✅ Market Data Routes (Public)
 app.use('/api/v1/indices', indexRoutes);
 app.use('/api/v1/stocks', stockRoutes);
 app.use('/api/v1/price-history', priceHistoryRoutes);
 app.use('/api/v1/daily-history', dailyHistoryRoutes);
+app.use('/api/v1/banners', bannerRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 // 404 Handler
 app.use(notFound);
@@ -128,7 +152,9 @@ const server = app.listen(PORT, () => {
     console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🌐 Health Check: http://localhost:${PORT}/health`);
     console.log(`📊 Admin API: http://localhost:${PORT}/api/v1/admin`);
+    console.log(`🖼️ Banners API: http://localhost:${PORT}/api/v1/banners`);
     console.log(`📈 Market API: http://localhost:${PORT}/api/v1/indices`);
+    console.log(`📁 Uploads: http://localhost:${PORT}/uploads`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 });
 

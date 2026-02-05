@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '../Middleware/Auth.js';
 import { authenticateAdmin } from '../Middleware/AdminAuth.js';
+import { canManageMarket } from '../Middleware/CheckPermissions.js';
 import {
     getDailyHistory,
     getTodayData,
@@ -17,11 +18,11 @@ const router = express.Router();
 router.get('/:ticker', getDailyHistory);
 router.get('/:ticker/today', getTodayData);
 
-// Admin routes
-router.post('/', authenticate, authenticateAdmin, createDailyHistory);
-router.put('/:id', authenticate, authenticateAdmin, updateDailyHistory);
-router.delete('/:id', authenticate, authenticateAdmin, deleteDailyHistory);
-router.post('/bulk-create', authenticate, authenticateAdmin, bulkCreateDailyHistory);
-router.post('/generate-sample', authenticate, authenticateAdmin, generateSampleDailyHistory);
+// ✅ Admin routes - now uses canManageMarket
+router.post('/', authenticateAdmin, canManageMarket, createDailyHistory);
+router.put('/:id', authenticateAdmin, canManageMarket, updateDailyHistory);
+router.delete('/:id', authenticateAdmin, canManageMarket, deleteDailyHistory);
+router.post('/bulk-create', authenticateAdmin, canManageMarket, bulkCreateDailyHistory);
+router.post('/generate-sample', authenticateAdmin, canManageMarket, generateSampleDailyHistory);
 
 export default router;

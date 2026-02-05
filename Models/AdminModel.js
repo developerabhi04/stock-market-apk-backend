@@ -20,7 +20,7 @@ const adminSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Password is required'],
         minlength: [6, 'Password must be at least 6 characters'],
-        select: false  // Don't include password in queries by default
+        select: false
     },
     fullName: {
         type: String,
@@ -28,7 +28,7 @@ const adminSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ['super_admin', 'payment_manager', 'admin', 'moderator'],  // ✅ Added payment_manager
+        enum: ['super_admin', 'admin'],  // ✅ Only 2 roles
         default: 'admin'
     },
     isActive: {
@@ -53,6 +53,10 @@ const adminSchema = new mongoose.Schema({
             default: false
         }
     },
+    allowedRoutes: {
+        type: [String],
+        default: []
+    },
     lastLogin: Date,
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -65,7 +69,6 @@ const adminSchema = new mongoose.Schema({
 // Hash password before saving
 adminSchema.pre('save', async function (next) {
     if (!this.isModified('password')) return next();
-
     this.password = await bcrypt.hash(this.password, 10);
     next();
 });

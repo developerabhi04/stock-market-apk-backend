@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticate } from '../Middleware/Auth.js';
 import { authenticateAdmin } from '../Middleware/AdminAuth.js';
+import { canManageMarket } from '../Middleware/CheckPermissions.js';
 import {
     getAllStocks,
     getStockByTicker,
@@ -16,10 +17,10 @@ const router = express.Router();
 router.get('/', getAllStocks);
 router.get('/:ticker', getStockByTicker);
 
-// Admin routes
-router.post('/', authenticate, authenticateAdmin, createStock);
-router.put('/:id', authenticate, authenticateAdmin, updateStock);
-router.delete('/:id', authenticate, authenticateAdmin, deleteStock);
-router.post('/bulk-update', authenticate, authenticateAdmin, bulkUpdateStockPrices);
+// ✅ Admin routes - now uses canManageMarket
+router.post('/', authenticateAdmin, canManageMarket, createStock);
+router.put('/:id', authenticateAdmin, canManageMarket, updateStock);
+router.delete('/:id', authenticateAdmin, canManageMarket, deleteStock);
+router.post('/bulk-update', authenticateAdmin, canManageMarket, bulkUpdateStockPrices);
 
 export default router;

@@ -14,7 +14,118 @@ import { asyncHandler } from '../Utils/asyncHandler.js';
 
 
 /**
- * ✅ Admin Login
+ * ✅ SIMPLIFIED: Create Admin (Super Admin Only)
+ * All created admins have role 'admin' with custom navigation permissions
+ */
+export const createAdmin = asyncHandler(async (req, res) => {
+    const { username, email, password, fullName, allowedRoutes } = req.body;
+
+    console.log('🔵 Creating admin with data:', { username, email, fullName, allowedRoutes });
+
+    // Validation
+    if (!username || !email || !password || !fullName) {
+        throw new ApiError(400, 'Username, email, password, and full name are required');
+    }
+
+    if (username.length < 3) {
+        throw new ApiError(400, 'Username must be at least 3 characters');
+    }
+
+    if (password.length < 6) {
+        throw new ApiError(400, 'Password must be at least 6 characters');
+    }
+
+    // Email validation
+    const emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
+    if (!emailRegex.test(email)) {
+        throw new ApiError(400, 'Please enter a valid email');
+    }
+
+    // Check if username already exists
+    const existingUsername = await Admin.findOne({ username: username.toLowerCase() });
+    if (existingUsername) {
+        throw new ApiError(400, 'Username already exists');
+    }
+
+    // Check if email already exists
+    const existingEmail = await Admin.findOne({ email: email.toLowerCase() });
+    if (existingEmail) {
+        throw new ApiError(400, 'Email already exists');
+    }
+
+    // ✅ Validate allowedRoutes
+    if (!allowedRoutes || allowedRoutes.length === 0) {
+        throw new ApiError(400, 'Please select at least one navigation item');
+    }
+
+    // ✅ All created admins have 'admin' role with custom permissions
+    const adminPermissions = {
+        canApprovePayments: true,
+        canRejectPayments: true,
+        canViewUsers: true,
+        canManageAdmins: false
+    };
+
+    // Create admin
+    const admin = await Admin.create({
+        username: username.toLowerCase(),
+        password,
+        fullName,
+        email: email.toLowerCase(),
+        role: 'admin',  // ✅ Always 'admin' role
+        permissions: adminPermissions,
+        allowedRoutes: allowedRoutes,
+        createdBy: req.admin.adminId
+    });
+
+    console.log('✅ Admin created successfully:', admin._id);
+
+    res.status(201).json(
+        new ApiResponse(201, {
+            admin: {
+                id: admin._id,
+                username: admin.username,
+                fullName: admin.fullName,
+                email: admin.email,
+                role: admin.role,
+                permissions: admin.permissions,
+                allowedRoutes: admin.allowedRoutes
+            }
+        }, 'Admin created successfully')
+    );
+});
+
+/**
+ * ✅ Delete Admin (Super Admin Only)
+ * Cannot delete super_admin
+ */
+export const deleteAdmin = asyncHandler(async (req, res) => {
+    const { adminId } = req.params;
+
+    const admin = await Admin.findById(adminId);
+    if (!admin) {
+        throw new ApiError(404, 'Admin not found');
+    }
+
+    // ✅ Prevent deleting super admin
+    if (admin.role === 'super_admin') {
+        throw new ApiError(403, 'Cannot delete super admin');
+    }
+
+    // Prevent self-deletion
+    if (adminId === req.admin.adminId.toString()) {
+        throw new ApiError(403, 'Cannot delete your own account');
+    }
+
+    await Admin.findByIdAndDelete(adminId);
+
+    res.status(200).json(
+        new ApiResponse(200, null, 'Admin deleted successfully')
+    );
+});
+
+/**
+ * ✅ Admin Login - Include allowedRoutes
  */
 export const adminLogin = asyncHandler(async (req, res) => {
     const { username, password } = req.body;
@@ -42,12 +153,12 @@ export const adminLogin = asyncHandler(async (req, res) => {
     admin.lastLogin = new Date();
     await admin.save();
 
-    // Generate JWT token with admin flag
+    // Generate JWT token
     const token = generateToken({
         adminId: admin._id,
         username: admin.username,
         role: admin.role,
-        isAdmin: true  // ✅ Admin flag
+        isAdmin: true
     });
 
     res.status(200).json(
@@ -58,12 +169,15 @@ export const adminLogin = asyncHandler(async (req, res) => {
                 fullName: admin.fullName,
                 email: admin.email,
                 role: admin.role,
-                permissions: admin.permissions
+                permissions: admin.permissions,
+                allowedRoutes: admin.allowedRoutes || []
             },
             token
         }, 'Login successful')
     );
 });
+
+
 
 
 
@@ -117,6 +231,107 @@ export const createFirstAdmin = asyncHandler(async (req, res) => {
             },
             token
         }, 'Super admin created successfully')
+    );
+});
+
+
+/**
+ * ✅ ENHANCED: Get All Admins (Super Admin Only)
+ */
+export const getAllAdmins = asyncHandler(async (req, res) => {
+    const admins = await Admin.find()
+        .select('-password') // Exclude password
+        .populate('createdBy', 'username fullName')
+        .sort({ createdAt: -1 })
+        .lean();
+
+    res.status(200).json(
+        new ApiResponse(200, { admins }, 'Admins fetched successfully')
+    );
+});
+
+
+
+
+/**
+ * ✅ NEW: Get Admin Activity Log (Optional - if you create AdminActivity model)
+ */
+export const getAdminActivity = asyncHandler(async (req, res) => {
+    const { adminId } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+
+    // For now, return empty array (implement AdminActivity model if needed)
+    // You can track login history, approval/rejection actions, etc.
+
+    res.status(200).json(
+        new ApiResponse(200, {
+            activities: [],
+            totalPages: 0,
+            currentPage: 1,
+            total: 0,
+            message: 'Activity tracking coming soon'
+        })
+    );
+});
+
+
+
+/**
+ * ✅ UPDATED: Update Admin Role (Super Admin Only)
+ */
+export const updateAdminRole = asyncHandler(async (req, res) => {
+    const { adminId } = req.params;
+    const { role } = req.body;
+
+    // ✅ Updated valid roles
+    if (!['super_admin', 'admin', 'moderator'].includes(role)) {
+        throw new ApiError(400, 'Invalid role');
+    }
+
+    const admin = await Admin.findById(adminId);
+    if (!admin) {
+        throw new ApiError(404, 'Admin not found');
+    }
+
+    const oldRole = admin.role;
+    admin.role = role;
+
+    // ✅ Update permissions based on new role
+    switch (role) {
+        case 'super_admin':
+            admin.permissions = {
+                canApprovePayments: true,
+                canRejectPayments: true,
+                canViewUsers: true,
+                canManageAdmins: true
+            };
+            admin.allowedRoutes = []; // Full access
+            break;
+        case 'admin':
+            admin.permissions = {
+                canApprovePayments: true,
+                canRejectPayments: true,
+                canViewUsers: true,
+                canManageAdmins: false
+            };
+            break;
+        case 'moderator':
+            admin.permissions = {
+                canApprovePayments: true,
+                canRejectPayments: true,
+                canViewUsers: false,
+                canManageAdmins: false
+            };
+            break;
+    }
+
+    await admin.save();
+
+    const adminData = admin.toObject();
+    delete adminData.password;
+
+    res.status(200).json(
+        new ApiResponse(200, { admin: adminData }, `Admin role updated from ${oldRole} to ${role}`)
     );
 });
 
@@ -1447,51 +1662,6 @@ export const createPaymentManager = asyncHandler(async (req, res) => {
                 role: paymentManager.role
             }
         }, 'Payment Manager created successfully')
-    );
-});
-
-/**
- * ✅ Get All Admins (Super Admin Only)
- */
-export const getAllAdmins = asyncHandler(async (req, res) => {
-    const admins = await Admin.find({ isActive: true })
-        .select('-password')
-        .populate('createdBy', 'username fullName')
-        .sort({ createdAt: -1 })
-        .lean();
-
-    res.status(200).json(
-        new ApiResponse(200, { admins }, 'Admins fetched successfully')
-    );
-});
-
-/**
- * ✅ Delete Admin (Super Admin Only)
- */
-export const deleteAdmin = asyncHandler(async (req, res) => {
-    const { adminId } = req.params;
-
-    // Cannot delete yourself
-    if (adminId === req.admin.adminId.toString()) {
-        throw new ApiError(400, 'You cannot delete yourself');
-    }
-
-    const admin = await Admin.findById(adminId);
-
-    if (!admin) {
-        throw new ApiError(404, 'Admin not found');
-    }
-
-    // Cannot delete another super admin
-    if (admin.role === 'super_admin') {
-        throw new ApiError(403, 'Cannot delete super admin');
-    }
-
-    admin.isActive = false;
-    await admin.save();
-
-    res.status(200).json(
-        new ApiResponse(200, null, 'Admin deleted successfully')
     );
 });
 
