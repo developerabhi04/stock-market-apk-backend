@@ -10,7 +10,8 @@ import {
     markAsRead,
     markAsClicked,
     getNotificationStats,
-    deleteNotification
+    deleteNotification,
+    getUsersForNotification
 } from '../Controllers/NotificationController.js';
 
 const router = express.Router();
@@ -22,6 +23,7 @@ router.post('/admin/send/:userId', authenticateAdmin, canManageNotifications, se
 router.get('/admin/history', authenticateAdmin, canManageNotifications, getNotificationHistory);
 router.get('/admin/stats', authenticateAdmin, canManageNotifications, getNotificationStats);
 router.delete('/admin/:notificationId', authenticateAdmin, canManageNotifications, deleteNotification);
+router.get('/admin/users-list', authenticateAdmin, canManageNotifications, getUsersForNotification);
 
 // ==================== USER ROUTES (Mobile App) ====================
 router.get('/user', authenticate, getUserNotifications);

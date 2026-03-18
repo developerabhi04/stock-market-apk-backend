@@ -6,12 +6,7 @@ import {
     canViewDashboard,
     canManageUsers,
     canManageMarket,
-    canManageKYC,           // ✅ NEW
     canManageTransactions,  // ✅ NEW
-    canManageBanners,       // ✅ NEW
-    canManageNotifications, // ✅ NEW
-    canViewReports,         // ✅ NEW
-    canManageCategories     // ✅ NEW
 } from '../Middleware/CheckPermissions.js';
 
 import {
@@ -23,15 +18,8 @@ import {
     getDashboardStats,
     getCompleteDashboardStats,
 
-    // Payments
-    getPendingPayments,
-    approvePayment,
-    rejectPayment,
 
     // Withdrawals
-    getPendingWithdrawals,
-    approveWithdrawal,
-    rejectWithdrawal,
     getWithdrawalStats,
 
     // Transactions
@@ -85,14 +73,14 @@ router.get('/dashboard/complete-stats', canViewDashboard, getCompleteDashboardSt
 router.get('/dashboard/market-stats', canViewDashboard, getMarketDashboardStats);
 
 // ✅ Payments (Super Admin + Admins with payment access)
-router.get('/payments/pending', canAccessPayments, getPendingPayments);
-router.post('/payments/approve', canAccessPayments, approvePayment);
-router.post('/payments/reject', canAccessPayments, rejectPayment);
+// router.get('/payments/pending', canAccessPayments, getPendingPayments);
+// router.post('/payments/approve', canAccessPayments, approvePayment);
+// router.post('/payments/reject', canAccessPayments, rejectPayment);
 
 // ✅ Withdrawals (Super Admin + Admins with payment access)
-router.get('/withdrawals/pending', canAccessPayments, getPendingWithdrawals);
-router.post('/withdrawals/approve', canAccessPayments, approveWithdrawal);
-router.post('/withdrawals/reject', canAccessPayments, rejectWithdrawal);
+// router.get('/withdrawals/pending', canAccessPayments, getPendingWithdrawals);
+// router.post('/withdrawals/approve', canAccessPayments, approveWithdrawal);
+// router.post('/withdrawals/reject', canAccessPayments, rejectWithdrawal);
 router.get('/withdrawals/stats', canAccessPayments, getWithdrawalStats);
 
 // ✅ Transactions (Super Admin + Admins with transaction access)

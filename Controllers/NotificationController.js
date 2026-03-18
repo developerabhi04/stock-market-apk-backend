@@ -95,23 +95,25 @@ export const sendNotificationToUser = asyncHandler(async (req, res) => {
 /**
  * ✅ Get Notification History (Admin)
  */
+
+/**
+ * ✅ Get Notification History (Admin)
+ */
 export const getNotificationHistory = asyncHandler(async (req, res) => {
     const { page = 1, limit = 20, type, recipients } = req.query;
 
     const filter = {};
-
-    if (type) {
-        filter.type = type;
-    }
-
-    if (recipients) {
-        filter.recipients = recipients;
-    }
+    if (type) filter.type = type;
+    if (recipients) filter.recipients = recipients;
 
     const notifications = await Notification.find(filter)
         .sort({ createdAt: -1 })
-        .populate('sentBy', 'username fullName')
-        .populate('userId', 'fullName phone')
+        .populate('sentBy', 'username fullName')   // ✅ Admin model — has username
+        .populate({
+            path: 'userId',
+            // ✅ Fixed: removed 'username', fixed 'phone' → 'phoneNumber'
+            select: 'fullName phoneNumber walletBalance createdAt'
+        })
         .limit(limit * 1)
         .skip((page - 1) * limit)
         .lean();
@@ -127,6 +129,7 @@ export const getNotificationHistory = asyncHandler(async (req, res) => {
         }, 'Notification history fetched successfully')
     );
 });
+
 
 /**
  * ✅ Get User Notifications (For Mobile App)
@@ -267,5 +270,21 @@ export const deleteNotification = asyncHandler(async (req, res) => {
 
     res.status(200).json(
         new ApiResponse(200, null, 'Notification deleted successfully')
+    );
+});
+
+
+
+
+
+// ✅ Fetch users for notification panel
+export const getUsersForNotification = asyncHandler(async (req, res) => {
+    const users = await User.find({ isActive: true })
+        // ✅ Fixed: removed 'username', fixed to actual schema fields
+        .select('fullName phoneNumber walletBalance createdAt')
+        .lean();
+
+    res.status(200).json(
+        new ApiResponse(200, { users }, 'Users fetched successfully')
     );
 });

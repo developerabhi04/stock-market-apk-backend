@@ -1,9 +1,8 @@
-import User from '../Models/UserModel.js';
-import Transaction from '../Models/TransactionModel.js';
-import { ApiError } from '../Utils/apiError.js';
-import { ApiResponse } from '../Utils/apiResponse.js';
-import { asyncHandler } from '../Utils/asyncHandler.js';
-
+import User from './user.model.js';                           
+import Transaction from '../transaction/transaction.model.js';       
+import { ApiError } from '../../shared/utils/apiError.js';      
+import { ApiResponse } from '../../shared/utils/apiResponse.js';   
+import { asyncHandler } from '../../shared/utils/asyncHandler.js';  
 
 /**
  * ✅ Get User Profile (Protected Route)
