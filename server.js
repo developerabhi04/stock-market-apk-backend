@@ -43,10 +43,24 @@ const app = express();
 
 // Security Middleware
 app.use(helmet());
+// ✅ CORS — must come BEFORE routes
+const allowedOrigins = (process.env.CLIENT_URL || '')
+    .split(',')
+    .map(o => o.trim().replace(/\/$/, ''));
+
 app.use(cors({
-    origin: process.env.CLIENT_URL || '*',
-    credentials: true
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true); // Postman / server calls
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        console.warn('🚫 CORS blocked:', origin);
+        callback(new Error('CORS not allowed for: ' + origin));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+app.options('*', cors()); 
 app.use(compression());
 
 // Body Parser
