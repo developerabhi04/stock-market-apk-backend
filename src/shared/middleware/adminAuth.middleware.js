@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
-import { ApiError } from '../utils/apiError.js';
-import { asyncHandler } from '../utils/asyncHandler.js';
+import { ApiError } from '../Utils/apiError.js';
+import { asyncHandler } from '../Utils/asyncHandler.js';
 
 export const authenticateAdmin = asyncHandler(async (req, res, next) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -12,14 +12,16 @@ export const authenticateAdmin = asyncHandler(async (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+        // Check if admin
         if (!decoded.isAdmin) {
             throw new ApiError(403, 'Admin access required');
         }
 
+        // ✅ Attach admin info to request (includes role)
         req.admin = {
             adminId: decoded.adminId,
             username: decoded.username,
-            role: decoded.role,
+            role: decoded.role,  // ✅ This is already being sent from login
             isAdmin: decoded.isAdmin
         };
 

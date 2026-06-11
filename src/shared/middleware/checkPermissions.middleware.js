@@ -125,3 +125,4 @@ export const canManageCategories = async (req, res, next) => {
         throw new ApiError(403, 'Category management permission required');
     } catch (error) { next(error); }
 };
+

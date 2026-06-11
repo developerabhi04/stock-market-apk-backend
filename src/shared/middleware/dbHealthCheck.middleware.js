@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
-import { getConnectionStateName } from '../database/dbStates.js';
+import { getConnectionStateName } from '../Database/dbStates.js';
 
+/**
+ * Database Health Check Middleware
+ * Ensures database is connected before processing requests
+ */
 export const dbHealthCheck = (req, res, next) => {
     const readyState = mongoose.connection.readyState;
 
@@ -15,6 +19,9 @@ export const dbHealthCheck = (req, res, next) => {
     next();
 };
 
+/**
+ * Detailed Health Check Endpoint Handler
+ */
 export const detailedHealthCheck = async (req, res) => {
     const readyState = mongoose.connection.readyState;
     const isHealthy = readyState === 1;
@@ -35,6 +42,7 @@ export const detailedHealthCheck = async (req, res) => {
         timestamp: new Date().toISOString()
     };
 
+    // Try to ping database
     if (isHealthy) {
         try {
             await mongoose.connection.db.admin().ping();
@@ -45,5 +53,6 @@ export const detailedHealthCheck = async (req, res) => {
         }
     }
 
-    res.status(isHealthy ? 200 : 503).json(healthData);
+    const statusCode = isHealthy ? 200 : 503;
+    res.status(statusCode).json(healthData);
 };

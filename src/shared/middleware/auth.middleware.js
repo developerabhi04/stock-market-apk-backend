@@ -1,6 +1,6 @@
-import { ApiError } from '../utils/apiError.js';
-import { asyncHandler } from '../utils/asyncHandler.js';
-import { verifyToken } from '../utils/jwtService.js';
+import { ApiError } from '../Utils/apiError.js';
+import { asyncHandler } from '../Utils/asyncHandler.js';
+import { verifyToken } from '../Utils/JwtService.js';
 
 export const authenticate = asyncHandler(async (req, res, next) => {
     const token = req.headers.authorization?.replace('Bearer ', '');

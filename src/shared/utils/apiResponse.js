@@ -1,5 +1,3 @@
-// utils/apiResponse.js
-
 export class ApiResponse {
     constructor(statusCode, data, message = 'Success') {
         this.statusCode = statusCode;

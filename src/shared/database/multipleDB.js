@@ -20,6 +20,7 @@ tradingDB.on('error', (err) => console.error('❌ Trading Database Error:', err.
 analyticsDB.on('connected', () => console.log('✅ Analytics Database Connected'));
 analyticsDB.on('error', (err) => console.error('❌ Analytics Database Error:', err.message));
 
+
 export const closeAllConnections = async () => {
     await Promise.all([mainDB.close(), tradingDB.close(), analyticsDB.close()]);
     console.log('✅ All database connections closed');
