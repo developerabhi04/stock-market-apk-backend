@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { getConnectionStateName } from '../Database/dbStates.js';
+import { getConnectionStateName } from '../database/dbStates.js';
 
 /**
  * Database Health Check Middleware
