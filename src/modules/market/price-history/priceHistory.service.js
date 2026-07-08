@@ -1,5 +1,5 @@
 import PriceHistory from './priceHistory.model.js';
-import { ApiError } from '../../../shared/Utils/apiError.js';
+import { ApiError } from '../../../shared/utils/apiError.js';
 
 const normalizeTicker = (ticker) => ticker?.toUpperCase().trim();
 
