@@ -8,10 +8,11 @@ import reportsRoutes from '../modules/reports/reports.route.js';
 import notificationRoutes from '../modules/notification/notification.route.js';
 import indexAdminRouter from '../modules/market/index/index.admin.route.js';
 import adminCategoryRouter from '../modules/market/category/category.route.js';
-
 import marketRoutes from '../modules/market/market.route.js';
-
 import { notFound } from '../shared/middleware/errorHandler.middleware.js';
+import paymentConfigAdminRouter from '../modules/paymentConfig/paymentConfig.admin.route.js';
+import paymentConfigRouter from '../modules/paymentConfig/paymentConfig.route.js';
+
 
 export const registerRoutes = (app) => {
     // Auth & User
@@ -21,10 +22,12 @@ export const registerRoutes = (app) => {
     // Admin
     app.use('/api/v1/admin', adminRoutes);
     app.use('/api/v1/admin', transactionAdminRouter);
+    app.use('/api/v1/admin/payment-config', paymentConfigAdminRouter);
 
     // General
     app.use('/api/v1/banners', bannerRouter);
     app.use('/api/v1/wallet', walletRouter);
+    app.use('/api/v1/notifications', notificationRoutes);
 
     // Market
     app.use('/api/v1/market', marketRoutes);
@@ -34,9 +37,9 @@ export const registerRoutes = (app) => {
     // Reports
     app.use('/api/v1/admin', reportsRoutes);
 
-    app.use('/api/v1/notifications', notificationRoutes);
+    app.use('/api/v1/payment-config', paymentConfigRouter);
 
-    // 404 handler — must always be last
+    // 404
     app.use(notFound);
 };
 

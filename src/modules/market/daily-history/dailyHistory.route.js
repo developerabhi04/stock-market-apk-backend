@@ -13,8 +13,9 @@ import {
 
 const router = express.Router();
 
-router.get('/:ticker', getDailyHistory);
+
 router.get('/:ticker/today', getTodayData);
+router.get('/:ticker', getDailyHistory);
 
 router.post('/', authenticateAdmin, canManageMarket, createDailyHistory);
 router.put('/:id', authenticateAdmin, canManageMarket, updateDailyHistory);

@@ -16,8 +16,8 @@ const indexSchema = new mongoose.Schema(
       trim: true,
     },
     category: {
-      type: mongoose.Schema.Types.ObjectId, // ✅ FIXED: was String with enum
-      ref: 'Category',                       // ✅ FIXED: reference to Category model
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Category',
       required: true,
       default: null,
     },
@@ -55,6 +55,11 @@ const indexSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: '',
+    },
+    defaultDailyRate: {
+      type: Number,
+      default: null,
+      min: 0,
     },
     isFeatured: {
       type: Boolean,
@@ -105,6 +110,14 @@ indexSchema.pre('validate', function (next) {
     previousClose > 0
       ? Number((((currentValue - previousClose) / previousClose) * 100).toFixed(2))
       : 0;
+
+  if (this.defaultDailyRate === '') {
+    this.defaultDailyRate = null;
+  }
+
+  if (this.defaultDailyRate !== null && this.defaultDailyRate !== undefined) {
+    this.defaultDailyRate = Number(this.defaultDailyRate);
+  }
 
   this.lastUpdated = new Date();
   next();

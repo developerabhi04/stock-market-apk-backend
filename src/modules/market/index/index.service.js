@@ -6,6 +6,24 @@ import { ensureDefaultCategoriesService } from '../category/category.service.js'
 
 const normalizeCategoryInput = (value = '') => value.trim().toLowerCase();
 
+const normalizeDefaultDailyRate = (value) => {
+  if (value === '' || value === null || typeof value === 'undefined') {
+    return null;
+  }
+
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) {
+    throw new ApiError(400, 'Default daily rate must be a valid number');
+  }
+
+  if (numericValue < 0) {
+    throw new ApiError(400, 'Default daily rate cannot be negative');
+  }
+
+  return Number(numericValue.toFixed(2));
+};
+
 const findCategoryFromInput = async (categoryValue) => {
   if (!categoryValue || categoryValue === 'All' || categoryValue === 'All Indices') {
     return null;
@@ -74,6 +92,10 @@ const calculatePagination = (page = 1, limit = 20) => {
 
 const mapIndexResponse = (item) => ({
   ...item,
+  defaultDailyRate:
+    item.defaultDailyRate === null || typeof item.defaultDailyRate === 'undefined'
+      ? null
+      : Number(item.defaultDailyRate),
   categoryId: item.category?._id || item.category || null,
   categoryName: item.category?.name || '',
   categorySlug: item.category?.slug || '',
@@ -199,6 +221,7 @@ export const createIndexService = async (payload) => {
     name: payload.name.trim(),
     symbol: payload.symbol.trim().toUpperCase(),
     category: categoryId,
+    defaultDailyRate: normalizeDefaultDailyRate(payload.defaultDailyRate),
   });
 
   const populated = await Index.findById(index._id)
@@ -249,6 +272,10 @@ export const updateIndexService = async ({ indexId, payload }) => {
 
   if (payload.symbol) {
     nextPayload.symbol = payload.symbol.trim().toUpperCase();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'defaultDailyRate')) {
+    nextPayload.defaultDailyRate = normalizeDefaultDailyRate(payload.defaultDailyRate);
   }
 
   if (payload.category) {

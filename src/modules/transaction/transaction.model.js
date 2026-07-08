@@ -23,7 +23,13 @@ const transactionSchema = new mongoose.Schema(
                 'profit',
                 'loss',
                 'refund',
-                'signup_bonus'
+                'signup_bonus',
+                // ─── New investment categories ───
+                'investment_principal_debit',
+                'investment_interest',
+                'investment_principal_return',
+                'investment_refund',
+
             ],
             required: true,
             index: true
@@ -87,9 +93,20 @@ const transactionSchema = new mongoose.Schema(
                 type: mongoose.Schema.Types.ObjectId,
                 ref: 'Order'
             },
+            investmentId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Investment'
+            },
+            indexId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'Index'
+            },
             stockSymbol: String,
             quantity: Number,
             price: Number,
+            dailyRate: Number,
+            dailyInterestAmount: Number,
+            creditDate: Date,
             bonusUsed: Number,
             walletUsed: Number
         },
