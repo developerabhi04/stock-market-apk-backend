@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
-import { ApiError } from '../Utils/apiError.js';
-import { asyncHandler } from '../Utils/asyncHandler.js';
+import { ApiError } from '../utils/apiError.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const authenticateAdmin = asyncHandler(async (req, res, next) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
