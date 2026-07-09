@@ -25,10 +25,12 @@ const _env = {
     // Redis
     REDIS_URL: process.env.REDIS_URL || null,
 
-    // Twilio
-    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || null,
-    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || null,
-    TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || null,
+    // 2Factor.in
+    TWO_FACTOR_API_KEY: process.env.TWO_FACTOR_API_KEY || null,
+    TWO_FACTOR_TEMPLATE_SIGNUP: process.env.TWO_FACTOR_TEMPLATE_SIGNUP || 'OTP1',
+    TWO_FACTOR_TEMPLATE_LOGIN: process.env.TWO_FACTOR_TEMPLATE_LOGIN || 'OTP1',
+    TWO_FACTOR_TEMPLATE_FORGOT: process.env.TWO_FACTOR_TEMPLATE_FORGOT || 'OTP1',
+    TWO_FACTOR_TEMPLATE_WALLET: process.env.TWO_FACTOR_TEMPLATE_WALLET || 'OTP1',
 
     // Uploads
     UPLOAD_DIR: process.env.UPLOAD_DIR || 'uploads',

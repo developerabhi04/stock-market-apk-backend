@@ -48,15 +48,15 @@ export const config = {
         enabled: !!env.REDIS_URL,
     },
 
-    twilio: {
-        accountSid: env.TWILIO_ACCOUNT_SID,
-        authToken: env.TWILIO_AUTH_TOKEN,
-        phoneNumber: env.TWILIO_PHONE_NUMBER,
-        enabled: !!(
-            env.TWILIO_ACCOUNT_SID &&
-            env.TWILIO_AUTH_TOKEN &&
-            env.TWILIO_PHONE_NUMBER
-        ),
+    twoFactor: {
+        apiKey: env.TWO_FACTOR_API_KEY,
+        templates: {
+            signup: env.TWO_FACTOR_TEMPLATE_SIGNUP,
+            login: env.TWO_FACTOR_TEMPLATE_LOGIN,
+            forgot_password: env.TWO_FACTOR_TEMPLATE_FORGOT,
+            wallet_withdrawal: env.TWO_FACTOR_TEMPLATE_WALLET,
+        },
+        enabled: !!env.TWO_FACTOR_API_KEY,
     },
 
     upload: {

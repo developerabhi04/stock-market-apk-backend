@@ -1,4 +1,8 @@
-import twilio from 'twilio';
+import axios from 'axios';
+import config from '../config/config.js';
+
+const { apiKey: API_KEY, templates } = config.twoFactor;
+const BASE_URL = 'https://2factor.in/API/V1';
 
 export const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -6,58 +10,44 @@ export const generateOTP = () => {
 
 export const sendOTP = async (phoneNumber, otp, purpose) => {
     try {
-        if (process.env.NODE_ENV === 'development') {
+        if (config.app.isDev) {
             console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
             console.log(`📱 SMS OTP for ${phoneNumber}: ${otp}`);
             console.log(`Purpose: ${purpose}`);
-            console.log(`Provider: Twilio (India)`);
+            console.log(`Provider: 2Factor.in (India)`);
             console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
         }
 
-        if (
-            !process.env.TWILIO_ACCOUNT_SID ||
-            !process.env.TWILIO_AUTH_TOKEN ||
-            !process.env.TWILIO_PHONE_NUMBER
-        ) {
-            console.warn('⚠️ Twilio not configured - using dev mode');
+        if (!config.twoFactor.enabled) {
+            console.warn('⚠️ 2Factor not configured - using dev mode');
             return { success: true, message: 'Dev mode - Check console for OTP' };
         }
 
-        const cleanNumber = phoneNumber.replace(/^\+?91/, '').trim();
-        const indianNumber = `+91${cleanNumber}`;
+        const cleanNumber = String(phoneNumber).replace(/^\+?91/, '').trim();
+        const indianNumber = `91${cleanNumber}`;
+        const template = templates[purpose] || 'TradeHubOTP';
+        const url = `${BASE_URL}/${API_KEY}/SMS/${indianNumber}/${otp}/${template}`;
 
-        const client = twilio(
-            process.env.TWILIO_ACCOUNT_SID,
-            process.env.TWILIO_AUTH_TOKEN
-        );
+        const response = await axios.get(url, { timeout: 10000 });
 
-        const messages = {
-            signup: `Welcome to TradeHub! Your OTP for registration is ${otp}. Valid for 5 minutes. Do not share this code.`,
-            login: `Your TradeHub login OTP is ${otp}. Valid for 5 minutes. Keep it confidential.`,
-            forgot_password: `Your password reset OTP is ${otp}. Valid for 5 minutes.`,
-            wallet_withdrawal: `Your withdrawal verification OTP is ${otp}. Valid for 5 minutes.`
-        };
+        console.log('✅ 2Factor raw response:', response.data);
 
-        const messageBody =
-            messages[purpose] ||
-            `Your TradeHub OTP is ${otp}. Valid for 5 minutes. Do not share.`;
-
-        const response = await client.messages.create({
-            body: messageBody,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            to: indianNumber
-        });
+        if (response.data.Status !== 'Success') {
+            throw new Error(response.data.Details || 'Failed to send OTP via 2Factor');
+        }
 
         return {
             success: true,
-            messageId: response.sid,
-            status: response.status,
+            messageId: response.data.Details,
+            status: response.data.Status,
+            providerResponse: response.data,
             message: 'OTP sent successfully'
         };
     } catch (error) {
-        console.error('❌ Twilio Error:', error.message);
+        const apiErrorDetail = error.response?.data?.Details;
+        console.error('❌ 2Factor Error:', error.response?.data || error.message);
 
-        if (process.env.NODE_ENV === 'development') {
+        if (config.app.isDev) {
             console.log('⚠️ SMS failed but continuing in dev mode');
             console.log(`💡 Use OTP from console: ${otp}`);
             return {
@@ -66,10 +56,6 @@ export const sendOTP = async (phoneNumber, otp, purpose) => {
             };
         }
 
-        throw new Error('Failed to send OTP. Please try again.');
+        throw new Error(apiErrorDetail || 'Failed to send OTP. Please try again.');
     }
-};
-
-export const resendOTP = async (phoneNumber, otp, purpose = 'login') => {
-    return await sendOTP(phoneNumber, otp, purpose);
 };
