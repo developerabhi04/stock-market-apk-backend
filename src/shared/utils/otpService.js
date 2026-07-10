@@ -1,15 +1,31 @@
 import nodemailer from 'nodemailer';
 import config from '../config/config.js';
 
-const { user: EMAIL_USER, appPassword: EMAIL_PASS, service: EMAIL_SERVICE, fromName } = config.email;
+const { user: EMAIL_USER, appPassword: EMAIL_PASS, fromName } = config.email;
 
 let transporter = null;
 if (config.email.enabled) {
+    // ── CHANGED: replaced service shorthand with explicit host/port + family: 4 ──
     transporter = nodemailer.createTransport({
-        service: EMAIL_SERVICE,
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        family: 4, // forces IPv4, fixes ENETUNREACH on Render
         auth: {
             user: EMAIL_USER,
             pass: EMAIL_PASS
+        },
+        connectionTimeout: 30000,
+        greetingTimeout: 30000,
+        socketTimeout: 30000
+    });
+
+    // ── ADDED: verify connection on startup so you see errors immediately in logs ──
+    transporter.verify((error) => {
+        if (error) {
+            console.error('❌ Email transporter verification failed:', error.message);
+        } else {
+            console.log('✅ Email transporter is ready to send messages');
         }
     });
 }
