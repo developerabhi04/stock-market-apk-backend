@@ -1,4 +1,3 @@
-// src/shared/config/config.js
 import { env } from './env.js';
 
 export const config = {

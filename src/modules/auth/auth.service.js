@@ -5,78 +5,93 @@ import Transaction from '../transaction/transaction.model.js';
 import { generateOTP, sendOTP } from '../../shared/utils/otpService.js';
 import { generateToken } from '../../shared/utils/jwtService.js';
 import { ApiError } from '../../shared/utils/apiError.js';
+import { sanitizePhoneNumber, sanitizeOTP } from './auth.validator.js';
 
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
 const SIGNUP_BONUS = 500;
 
 const createOtpRecord = async ({ phoneNumber, purpose }) => {
-    await OTP.deleteMany({ phoneNumber, purpose });
+    const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
+
+    await OTP.deleteMany({ phoneNumber: cleanPhoneNumber, purpose });
 
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
 
     await OTP.create({
-        phoneNumber,
+        phoneNumber: cleanPhoneNumber,
         otp,
         purpose,
         expiresAt
     });
 
-    await sendOTP(phoneNumber, otp, purpose);
+    await sendOTP(cleanPhoneNumber, otp, purpose);
 
-    return { phoneNumber, otp, expiresAt };
+    return { phoneNumber: cleanPhoneNumber, otp, expiresAt };
 };
 
 export const sendSignupOtpService = async ({ fullName, phoneNumber }) => {
-    const existingUser = await User.findOne({ phoneNumber });
+    const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
+
+    const existingUser = await User.findOne({ phoneNumber: cleanPhoneNumber });
     if (existingUser) {
         throw new ApiError(409, 'Phone number already registered');
     }
 
-    await createOtpRecord({ phoneNumber, purpose: 'signup' });
+    await createOtpRecord({ phoneNumber: cleanPhoneNumber, purpose: 'signup' });
 
     return {
-        phoneNumber,
-        fullName,
+        phoneNumber: cleanPhoneNumber,
+        fullName: fullName.trim(),
         message: 'OTP sent successfully. Please verify to complete registration.'
     };
 };
 
 export const sendLoginOtpService = async ({ phoneNumber }) => {
-    const user = await User.findOne({ phoneNumber });
+    const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
+
+    const user = await User.findOne({ phoneNumber: cleanPhoneNumber });
     if (!user) {
         throw new ApiError(404, 'User not found. Please signup first.');
     }
 
-    await createOtpRecord({ phoneNumber, purpose: 'login' });
+    await createOtpRecord({ phoneNumber: cleanPhoneNumber, purpose: 'login' });
 
     return {
-        phoneNumber,
+        phoneNumber: cleanPhoneNumber,
         message: 'OTP sent successfully'
     };
 };
 
 export const verifyLoginOtpService = async ({ phoneNumber, otp }) => {
-    const otpRecord = await OTP.findOne({
-        phoneNumber,
-        otp,
+    const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
+    const cleanOtp = sanitizeOTP(otp);
+
+    const latestOtpRecord = await OTP.findOne({
+        phoneNumber: cleanPhoneNumber,
         purpose: 'login',
         isUsed: false
     }).sort({ createdAt: -1 });
 
-    if (!otpRecord) {
+    if (!latestOtpRecord) {
         throw new ApiError(400, 'Invalid OTP. Please try again.');
     }
 
-    if (!otpRecord.isValid()) {
+    if (!latestOtpRecord.isValid()) {
         throw new ApiError(400, 'OTP has expired. Please request a new one.');
     }
 
-    otpRecord.isUsed = true;
-    otpRecord.attempts += 1;
-    await otpRecord.save();
+    if (latestOtpRecord.otp !== cleanOtp) {
+        latestOtpRecord.attempts += 1;
+        await latestOtpRecord.save();
+        throw new ApiError(400, 'Invalid OTP. Please try again.');
+    }
 
-    const user = await User.findByPhone(phoneNumber);
+    latestOtpRecord.isUsed = true;
+    latestOtpRecord.attempts += 1;
+    await latestOtpRecord.save();
+
+    const user = await User.findOne({ phoneNumber: cleanPhoneNumber });
     if (!user) {
         throw new ApiError(404, 'User not found');
     }
@@ -102,19 +117,27 @@ export const verifyLoginOtpService = async ({ phoneNumber, otp }) => {
 };
 
 export const verifySignupOtpService = async ({ fullName, phoneNumber, otp }) => {
-    const otpRecord = await OTP.findOne({
-        phoneNumber,
-        otp,
+    const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
+    const cleanOtp = sanitizeOTP(otp);
+
+    const latestOtpRecord = await OTP.findOne({
+        phoneNumber: cleanPhoneNumber,
         purpose: 'signup',
         isUsed: false
     }).sort({ createdAt: -1 });
 
-    if (!otpRecord) {
+    if (!latestOtpRecord) {
         throw new ApiError(400, 'Invalid OTP. Please try again.');
     }
 
-    if (otpRecord.expiresAt < new Date()) {
+    if (!latestOtpRecord.isValid()) {
         throw new ApiError(400, 'OTP has expired. Please request a new one.');
+    }
+
+    if (latestOtpRecord.otp !== cleanOtp) {
+        latestOtpRecord.attempts += 1;
+        await latestOtpRecord.save();
+        throw new ApiError(400, 'Invalid OTP. Please try again.');
     }
 
     const session = await mongoose.startSession();
@@ -125,14 +148,15 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, otp }) => 
     });
 
     try {
-        otpRecord.isUsed = true;
-        await otpRecord.save({ session });
+        latestOtpRecord.isUsed = true;
+        latestOtpRecord.attempts += 1;
+        await latestOtpRecord.save({ session });
 
         const user = await User.create(
             [
                 {
                     fullName: fullName.trim(),
-                    phoneNumber,
+                    phoneNumber: cleanPhoneNumber,
                     isVerified: true,
                     walletBalance: 0,
                     bonusBalance: SIGNUP_BONUS,
@@ -188,30 +212,34 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, otp }) => 
 };
 
 export const resendLoginOtpService = async ({ phoneNumber }) => {
-    const user = await User.findOne({ phoneNumber });
+    const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
+
+    const user = await User.findOne({ phoneNumber: cleanPhoneNumber });
     if (!user) {
         throw new ApiError(404, 'User not found. Please signup first.');
     }
 
-    await createOtpRecord({ phoneNumber, purpose: 'login' });
+    await createOtpRecord({ phoneNumber: cleanPhoneNumber, purpose: 'login' });
 
     return {
-        phoneNumber,
+        phoneNumber: cleanPhoneNumber,
         message: 'OTP has been resent successfully. Please verify to login.'
     };
 };
 
 export const resendSignupOtpService = async ({ fullName, phoneNumber }) => {
-    const existingUser = await User.findOne({ phoneNumber });
+    const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
+
+    const existingUser = await User.findOne({ phoneNumber: cleanPhoneNumber });
     if (existingUser) {
         throw new ApiError(409, 'Phone number already registered. Please login instead.');
     }
 
-    await createOtpRecord({ phoneNumber, purpose: 'signup' });
+    await createOtpRecord({ phoneNumber: cleanPhoneNumber, purpose: 'signup' });
 
     return {
-        phoneNumber,
-        fullName,
+        phoneNumber: cleanPhoneNumber,
+        fullName: fullName.trim(),
         message: 'OTP has been resent successfully. Please verify to complete registration.'
     };
 };

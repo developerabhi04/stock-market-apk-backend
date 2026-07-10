@@ -8,7 +8,20 @@ export const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
 };
 
-export const sendOTP = async (phoneNumber, otp, purpose) => {
+const sanitizePhoneNumber = (phoneNumber) => {
+    const cleaned = String(phoneNumber || '')
+        .replace(/\D/g, '')
+        .replace(/^91/, '')
+        .slice(0, 10);
+
+    if (!/^[6-9]\d{9}$/.test(cleaned)) {
+        throw new Error('Invalid Indian mobile number');
+    }
+
+    return cleaned;
+};
+
+export const sendOTP = async (phoneNumber, otp, purpose = 'login') => {
     try {
         if (config.app.isDev) {
             console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -23,10 +36,12 @@ export const sendOTP = async (phoneNumber, otp, purpose) => {
             return { success: true, message: 'Dev mode - Check console for OTP' };
         }
 
-        const cleanNumber = String(phoneNumber).replace(/^\+?91/, '').trim();
+        const cleanNumber = sanitizePhoneNumber(phoneNumber);
         const indianNumber = `91${cleanNumber}`;
         const template = templates[purpose] || 'TradeHubOTP';
         const url = `${BASE_URL}/${API_KEY}/SMS/${indianNumber}/${otp}/${template}`;
+
+        console.log('📤 2Factor URL:', url.replace(API_KEY, 'API_KEY_HIDDEN'));
 
         const response = await axios.get(url, { timeout: 10000 });
 
@@ -56,6 +71,10 @@ export const sendOTP = async (phoneNumber, otp, purpose) => {
             };
         }
 
-        throw new Error(apiErrorDetail || 'Failed to send OTP. Please try again.');
+        throw new Error(apiErrorDetail || error.message || 'Failed to send OTP. Please try again.');
     }
+};
+
+export const resendOTP = async (phoneNumber, otp, purpose = 'login') => {
+    return await sendOTP(phoneNumber, otp, purpose);
 };
