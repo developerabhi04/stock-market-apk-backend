@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import User from '../user/user.model.js';
-import OTP from './otp.model.js';
+import { OTP } from './otp.model.js';
 import Transaction from '../transaction/transaction.model.js';
 import { generateOTP, sendOTP } from '../../shared/utils/otpService.js';
 import { generateToken } from '../../shared/utils/jwtService.js';
