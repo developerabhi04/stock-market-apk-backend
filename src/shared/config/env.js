@@ -19,11 +19,11 @@ const _env = {
 
     REDIS_URL: process.env.REDIS_URL || null,
 
-    TWO_FACTOR_API_KEY: process.env.TWO_FACTOR_API_KEY || null,
-    TWO_FACTOR_TEMPLATE_SIGNUP: process.env.TWO_FACTOR_TEMPLATE_SIGNUP || 'TradeHubOTP',
-    TWO_FACTOR_TEMPLATE_LOGIN: process.env.TWO_FACTOR_TEMPLATE_LOGIN || 'TradeHubOTP',
-    TWO_FACTOR_TEMPLATE_FORGOT: process.env.TWO_FACTOR_TEMPLATE_FORGOT || 'TradeHubOTP',
-    TWO_FACTOR_TEMPLATE_WALLET: process.env.TWO_FACTOR_TEMPLATE_WALLET || 'TradeHubOTP',
+    // ── REPLACED TWO_FACTOR_* WITH EMAIL_* ──
+    EMAIL_SERVICE: process.env.EMAIL_SERVICE || 'gmail',
+    EMAIL_USER: process.env.EMAIL_USER || null,
+    EMAIL_APP_PASSWORD: process.env.EMAIL_APP_PASSWORD || null,
+    EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME || 'TradeHub',
 
     UPLOAD_DIR: process.env.UPLOAD_DIR || 'uploads',
     MAX_FILE_SIZE: Number(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024,

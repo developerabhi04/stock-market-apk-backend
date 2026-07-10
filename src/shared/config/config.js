@@ -47,15 +47,13 @@ export const config = {
         enabled: !!env.REDIS_URL,
     },
 
-    twoFactor: {
-        apiKey: env.TWO_FACTOR_API_KEY,
-        templates: {
-            signup: env.TWO_FACTOR_TEMPLATE_SIGNUP,
-            login: env.TWO_FACTOR_TEMPLATE_LOGIN,
-            forgot_password: env.TWO_FACTOR_TEMPLATE_FORGOT,
-            wallet_withdrawal: env.TWO_FACTOR_TEMPLATE_WALLET,
-        },
-        enabled: !!env.TWO_FACTOR_API_KEY,
+    // ── REPLACED twoFactor WITH email ──
+    email: {
+        service: env.EMAIL_SERVICE,
+        user: env.EMAIL_USER,
+        appPassword: env.EMAIL_APP_PASSWORD,
+        fromName: env.EMAIL_FROM_NAME,
+        enabled: !!env.EMAIL_USER && !!env.EMAIL_APP_PASSWORD,
     },
 
     upload: {
