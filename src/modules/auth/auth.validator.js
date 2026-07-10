@@ -5,7 +5,7 @@ export const sanitizePhoneNumber = (phoneNumber) => {
 };
 
 export const sanitizeOTP = (otp) => {
-    return String(otp || '').replace(/\D/g, '').slice(0, 6);
+    return String(otp || '').replace(/\D/g, '').slice(0, 4);
 };
 
 export const validatePhoneNumber = (phoneNumber) => {
@@ -40,8 +40,8 @@ export const validateSignupPayload = ({ fullName, phoneNumber, otpRequired = fal
             throw new ApiError(400, 'OTP is required');
         }
 
-        if (!/^\d{6}$/.test(cleanOtp)) {
-            throw new ApiError(400, 'OTP must be 6 digits');
+        if (!/^\d{4}$/.test(cleanOtp)) {
+            throw new ApiError(400, 'OTP must be 4 digits');
         }
     }
 };
@@ -56,8 +56,8 @@ export const validateLoginPayload = ({ phoneNumber, otpRequired = false, otp }) 
             throw new ApiError(400, 'Phone number and OTP are required');
         }
 
-        if (!/^\d{6}$/.test(cleanOtp)) {
-            throw new ApiError(400, 'OTP must be 6 digits');
+        if (!/^\d{4}$/.test(cleanOtp)) {
+            throw new ApiError(400, 'OTP must be 4 digits');
         }
     }
 };

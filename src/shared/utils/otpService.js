@@ -5,7 +5,7 @@ const { apiKey: API_KEY, templates } = config.twoFactor;
 const BASE_URL = 'https://2factor.in/API/V1';
 
 export const generateOTP = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return Math.floor(1000 + Math.random() * 9000).toString();
 };
 
 const sanitizePhoneNumber = (phoneNumber) => {
