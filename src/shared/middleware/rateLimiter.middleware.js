@@ -25,11 +25,11 @@ export const rateLimiter = (maxRequests, windowMinutes) => {
 };
 
 export const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 5,
+    windowMs: 30 * 60 * 1000, // ── CHANGED: 15 → 30 min ──
+    max: 10, // ── CHANGED: 5 → 10 ──
     message: {
         success: false,
-        message: 'Too many authentication attempts. Please try again after 15 minutes.'
+        message: 'Too many authentication attempts. Please try again after 30 minutes.'
     },
     standardHeaders: true,
     legacyHeaders: false
@@ -37,7 +37,7 @@ export const authLimiter = rateLimit({
 
 export const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: 200, // ── CHANGED: 100 → 200 ──
     message: {
         success: false,
         message: 'Too many API requests. Please try again later.'
@@ -47,11 +47,11 @@ export const apiLimiter = rateLimit({
 });
 
 export const otpLimiter = rateLimit({
-    windowMs: 10 * 60 * 1000,
-    max: 3,
+    windowMs: 30 * 60 * 1000, // ── CHANGED: 10 → 30 min ──
+    max: 10, // ── CHANGED: 3 → 10 ──
     message: {
         success: false,
-        message: 'Too many OTP requests. Please try again after 10 minutes.'
+        message: 'Too many OTP requests. Please try again after 30 minutes.'
     },
     standardHeaders: true,
     legacyHeaders: false,
