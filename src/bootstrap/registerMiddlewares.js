@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -22,6 +22,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export const registerMiddlewares = (app) => {
+    app.set('trust proxy', 1);
+
     app.use(helmet());
     app.use(mongoSanitizeMiddleware);
 
@@ -57,12 +59,14 @@ export const registerMiddlewares = (app) => {
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+    const limiterKey = (req) => ipKeyGenerator(req.ip);
+
     const globalLimiter = rateLimit({
         windowMs: 15 * 60 * 1000,
         max: 200,
         standardHeaders: true,
         legacyHeaders: false,
-        keyGenerator: (req) => req.ip,
+        keyGenerator: limiterKey,
         message: {
             success: false,
             message: 'Too many requests from this IP, please try again after 15 minutes.'
@@ -74,7 +78,7 @@ export const registerMiddlewares = (app) => {
         max: 10,
         standardHeaders: true,
         legacyHeaders: false,
-        keyGenerator: (req) => req.ip,
+        keyGenerator: limiterKey,
         message: {
             success: false,
             message: 'Too many auth attempts, please try again after 15 minutes.'
