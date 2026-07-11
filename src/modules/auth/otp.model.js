@@ -4,8 +4,9 @@ const otpSchema = new mongoose.Schema(
     {
         phoneNumber: {
             type: String,
-            index: true
-            // kept for reference/logging only, no longer required for OTP delivery
+            required: true,
+            index: true,
+            match: [/^[6-9]\d{9}$/, 'Invalid Indian phone number']
         },
         otp: {
             type: String,
@@ -31,10 +32,12 @@ const otpSchema = new mongoose.Schema(
             default: 0
         }
     },
-    { timestamps: true }
+    {
+        timestamps: true
+    }
 );
 
-otpSchema.index({ email: 1, purpose: 1, createdAt: -1 });
+otpSchema.index({ phoneNumber: 1, purpose: 1, createdAt: -1 });
 otpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 otpSchema.methods.isValid = function () {
@@ -42,4 +45,5 @@ otpSchema.methods.isValid = function () {
 };
 
 const OTP = mongoose.model('OTP', otpSchema);
+
 export default OTP;
