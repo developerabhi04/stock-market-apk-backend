@@ -4,23 +4,28 @@ import config from '../config/config.js';
 const { user: EMAIL_USER, appPassword: EMAIL_PASS, fromName } = config.email;
 
 let transporter = null;
+
 if (config.email.enabled) {
-    // ── CHANGED: replaced service shorthand with explicit host/port + family: 4 ──
     transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
         port: 465,
         secure: true,
-        family: 4, // forces IPv4, fixes ENETUNREACH on Render
         auth: {
             user: EMAIL_USER,
             pass: EMAIL_PASS
         },
+        pool: false,
+        maxConnections: 1,
+        maxMessages: 10,
         connectionTimeout: 30000,
         greetingTimeout: 30000,
-        socketTimeout: 30000
+        socketTimeout: 30000,
+        tls: {
+            rejectUnauthorized: true,
+            servername: 'smtp.gmail.com'
+        }
     });
 
-    // ── ADDED: verify connection on startup so you see errors immediately in logs ──
     transporter.verify((error) => {
         if (error) {
             console.error('❌ Email transporter verification failed:', error.message);
@@ -54,10 +59,10 @@ export const sendOTP = async (email, otp, purpose = 'login') => {
         const cleanEmail = sanitizeEmail(email);
 
         if (config.app.isDev) {
-            console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             console.log(`📧 Email OTP for ${cleanEmail}: ${otp}`);
             console.log(`Purpose: ${purpose}`);
-            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
         }
 
         if (!config.email.enabled) {

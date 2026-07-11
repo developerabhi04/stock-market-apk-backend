@@ -22,11 +22,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export const registerMiddlewares = (app) => {
-    // ─── Security ──────────────────────────────────────────────────────────────
     app.use(helmet());
     app.use(mongoSanitizeMiddleware);
 
-    // ─── CORS ──────────────────────────────────────────────────────────────────
     const allowedOrigins = (process.env.CLIENT_URL || '')
         .split(',')
         .map((o) => o.trim().replace(/\/$/, ''))
@@ -55,17 +53,16 @@ export const registerMiddlewares = (app) => {
         })
     );
 
-    // ─── Compression & Parsing ─────────────────────────────────────────────────
     app.use(compression());
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-    // ─── Rate Limiting ─────────────────────────────────────────────────────────
     const globalLimiter = rateLimit({
         windowMs: 15 * 60 * 1000,
         max: 200,
         standardHeaders: true,
         legacyHeaders: false,
+        keyGenerator: (req) => req.ip,
         message: {
             success: false,
             message: 'Too many requests from this IP, please try again after 15 minutes.'
@@ -77,6 +74,7 @@ export const registerMiddlewares = (app) => {
         max: 10,
         standardHeaders: true,
         legacyHeaders: false,
+        keyGenerator: (req) => req.ip,
         message: {
             success: false,
             message: 'Too many auth attempts, please try again after 15 minutes.'
@@ -86,7 +84,6 @@ export const registerMiddlewares = (app) => {
     app.use('/api', globalLimiter);
     app.use('/api/v1/auth', authLimiter);
 
-    // ─── Static File Serving ───────────────────────────────────────────────────
     app.use(
         '/uploads',
         (req, res, next) => {
@@ -97,10 +94,8 @@ export const registerMiddlewares = (app) => {
         express.static(path.join(__dirname, '../../uploads'))
     );
 
-    // ─── DB Health Check on all /api routes ────────────────────────────────────
     app.use('/api', dbHealthCheck);
 
-    // ─── Info & Health Endpoints ───────────────────────────────────────────────
     app.get('/', (_req, res) => {
         res.status(200).json({
             message: `${config.app.name} API is running`,

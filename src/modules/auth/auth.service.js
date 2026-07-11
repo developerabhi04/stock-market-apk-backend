@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import User from '../user/user.model.js';
-import  OTP  from './otp.model.js';
+import OTP from './otp.model.js';
 import Transaction from '../transaction/transaction.model.js';
 import { generateOTP, sendOTP } from '../../shared/utils/otpService.js';
 import { generateToken } from '../../shared/utils/jwtService.js';
@@ -10,8 +10,17 @@ import { sanitizePhoneNumber, sanitizeEmail, sanitizeOTP } from './auth.validato
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
 const SIGNUP_BONUS = 500;
 
+const getLatestOtpRecord = async ({ email, purpose }) => {
+    return OTP.findOne({
+        email,
+        purpose,
+        isUsed: false
+    }).sort({ createdAt: -1 });
+};
+
 const createOtpRecord = async ({ email, phoneNumber, purpose }) => {
     const cleanEmail = sanitizeEmail(email);
+    const cleanPhoneNumber = phoneNumber ? sanitizePhoneNumber(phoneNumber) : undefined;
 
     await OTP.deleteMany({ email: cleanEmail, purpose });
 
@@ -20,7 +29,7 @@ const createOtpRecord = async ({ email, phoneNumber, purpose }) => {
 
     await OTP.create({
         email: cleanEmail,
-        phoneNumber: phoneNumber ? sanitizePhoneNumber(phoneNumber) : undefined,
+        phoneNumber: cleanPhoneNumber,
         otp,
         purpose,
         expiresAt
@@ -31,23 +40,51 @@ const createOtpRecord = async ({ email, phoneNumber, purpose }) => {
     return { email: cleanEmail, otp, expiresAt };
 };
 
+const buildUserResponse = (user) => ({
+    id: user._id,
+    fullName: user.fullName,
+    phoneNumber: user.phoneNumber,
+    email: user.email,
+    walletBalance: user.walletBalance,
+    bonusBalance: user.bonusBalance,
+    totalBalance: user.walletBalance + user.bonusBalance,
+    kycStatus: user.kycStatus,
+    isVerified: user.isVerified
+});
+
+const markOtpUsed = async (otpDoc) => {
+    otpDoc.isUsed = true;
+    otpDoc.attempts += 1;
+    await otpDoc.save();
+};
+
 export const sendSignupOtpService = async ({ fullName, phoneNumber, email }) => {
     const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
     const cleanEmail = sanitizeEmail(email);
+    const cleanFullName = String(fullName || '').trim();
+
+    if (!cleanFullName || cleanFullName.length < 3) {
+        throw new ApiError(400, 'Full name must be at least 3 characters');
+    }
 
     const existingUser = await User.findOne({
         $or: [{ phoneNumber: cleanPhoneNumber }, { email: cleanEmail }]
     });
+
     if (existingUser) {
         throw new ApiError(409, 'Phone number or email already registered');
     }
 
-    await createOtpRecord({ email: cleanEmail, phoneNumber: cleanPhoneNumber, purpose: 'signup' });
+    await createOtpRecord({
+        email: cleanEmail,
+        phoneNumber: cleanPhoneNumber,
+        purpose: 'signup'
+    });
 
     return {
         email: cleanEmail,
         phoneNumber: cleanPhoneNumber,
-        fullName: fullName.trim(),
+        fullName: cleanFullName,
         message: 'OTP sent to your email. Please verify to complete registration.'
     };
 };
@@ -55,26 +92,32 @@ export const sendSignupOtpService = async ({ fullName, phoneNumber, email }) => 
 export const sendLoginOtpService = async ({ email }) => {
     const cleanEmail = sanitizeEmail(email);
 
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await User.findOne({ email: cleanEmail, isActive: true });
     if (!user) {
         throw new ApiError(404, 'User not found. Please signup first.');
     }
 
-    await createOtpRecord({ email: cleanEmail, phoneNumber: user.phoneNumber, purpose: 'login' });
+    await createOtpRecord({
+        email: cleanEmail,
+        phoneNumber: user.phoneNumber,
+        purpose: 'login'
+    });
 
-    return { email: cleanEmail, message: 'OTP sent to your email' };
+    return {
+        email: cleanEmail,
+        message: 'OTP sent to your email'
+    };
 };
 
 export const verifyLoginOtpService = async ({ email, otp }) => {
     const cleanEmail = sanitizeEmail(email);
     const cleanOtp = sanitizeOTP(otp);
 
-    const latestOtpRecord = await OTP.findOne({
-        email: cleanEmail,
-        purpose: 'login',
-        isUsed: false
-    }).sort({ createdAt: -1 });
+    if (!cleanOtp || !/^\d{6}$/.test(cleanOtp)) {
+        throw new ApiError(400, 'OTP must be 6 digits');
+    }
 
+    const latestOtpRecord = await getLatestOtpRecord({ email: cleanEmail, purpose: 'login' });
     if (!latestOtpRecord) {
         throw new ApiError(400, 'Invalid OTP. Please try again.');
     }
@@ -89,11 +132,9 @@ export const verifyLoginOtpService = async ({ email, otp }) => {
         throw new ApiError(400, 'Invalid OTP. Please try again.');
     }
 
-    latestOtpRecord.isUsed = true;
-    latestOtpRecord.attempts += 1;
-    await latestOtpRecord.save();
+    await markOtpUsed(latestOtpRecord);
 
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await User.findOne({ email: cleanEmail, isActive: true });
     if (!user) {
         throw new ApiError(404, 'User not found');
     }
@@ -104,32 +145,26 @@ export const verifyLoginOtpService = async ({ email, otp }) => {
     const token = generateToken({ userId: user._id });
 
     return {
-        user: {
-            id: user._id,
-            fullName: user.fullName,
-            phoneNumber: user.phoneNumber,
-            email: user.email,
-            walletBalance: user.walletBalance,
-            bonusBalance: user.bonusBalance,
-            totalBalance: user.totalBalance,
-            kycStatus: user.kycStatus,
-            isVerified: user.isVerified
-        },
+        user: buildUserResponse(user),
         token
     };
 };
 
 export const verifySignupOtpService = async ({ fullName, phoneNumber, email, otp }) => {
+    const cleanFullName = String(fullName || '').trim();
     const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
     const cleanEmail = sanitizeEmail(email);
     const cleanOtp = sanitizeOTP(otp);
 
-    const latestOtpRecord = await OTP.findOne({
-        email: cleanEmail,
-        purpose: 'signup',
-        isUsed: false
-    }).sort({ createdAt: -1 });
+    if (!cleanFullName || cleanFullName.length < 3) {
+        throw new ApiError(400, 'Full name must be at least 3 characters');
+    }
 
+    if (!cleanOtp || !/^\d{6}$/.test(cleanOtp)) {
+        throw new ApiError(400, 'OTP must be 6 digits');
+    }
+
+    const latestOtpRecord = await getLatestOtpRecord({ email: cleanEmail, purpose: 'signup' });
     if (!latestOtpRecord) {
         throw new ApiError(400, 'Invalid OTP. Please try again.');
     }
@@ -145,21 +180,15 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, email, otp
     }
 
     const session = await mongoose.startSession();
-    session.startTransaction({
-        readPreference: 'primary',
-        readConcern: { level: 'majority' },
-        writeConcern: { w: 'majority' }
-    });
-
     try {
-        latestOtpRecord.isUsed = true;
-        latestOtpRecord.attempts += 1;
-        await latestOtpRecord.save({ session });
+        session.startTransaction();
 
-        const user = await User.create(
+        await markOtpUsed(latestOtpRecord);
+
+        const [user] = await User.create(
             [
                 {
-                    fullName: fullName.trim(),
+                    fullName: cleanFullName,
                     phoneNumber: cleanPhoneNumber,
                     email: cleanEmail,
                     isVerified: true,
@@ -175,7 +204,7 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, email, otp
         await Transaction.create(
             [
                 {
-                    userId: user[0]._id,
+                    userId: user._id,
                     type: 'credit',
                     category: 'signup_bonus',
                     amount: SIGNUP_BONUS,
@@ -192,20 +221,10 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, email, otp
 
         await session.commitTransaction();
 
-        const token = generateToken({ userId: user[0]._id });
+        const token = generateToken({ userId: user._id });
 
         return {
-            user: {
-                id: user[0]._id,
-                fullName: user[0].fullName,
-                phoneNumber: user[0].phoneNumber,
-                email: user[0].email,
-                walletBalance: user[0].walletBalance,
-                bonusBalance: user[0].bonusBalance,
-                totalBalance: user[0].walletBalance + user[0].bonusBalance,
-                kycStatus: user[0].kycStatus,
-                isVerified: user[0].isVerified
-            },
+            user: buildUserResponse(user),
             token,
             message: `🎉 Welcome! You've received ₹${SIGNUP_BONUS} signup bonus!`
         };
@@ -220,33 +239,50 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, email, otp
 export const resendLoginOtpService = async ({ email }) => {
     const cleanEmail = sanitizeEmail(email);
 
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await User.findOne({ email: cleanEmail, isActive: true });
     if (!user) {
         throw new ApiError(404, 'User not found. Please signup first.');
     }
 
-    await createOtpRecord({ email: cleanEmail, phoneNumber: user.phoneNumber, purpose: 'login' });
+    await createOtpRecord({
+        email: cleanEmail,
+        phoneNumber: user.phoneNumber,
+        purpose: 'login'
+    });
 
-    return { email: cleanEmail, message: 'OTP has been resent to your email.' };
+    return {
+        email: cleanEmail,
+        message: 'OTP has been resent to your email.'
+    };
 };
 
 export const resendSignupOtpService = async ({ fullName, phoneNumber, email }) => {
+    const cleanFullName = String(fullName || '').trim();
     const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
     const cleanEmail = sanitizeEmail(email);
+
+    if (!cleanFullName || cleanFullName.length < 3) {
+        throw new ApiError(400, 'Full name must be at least 3 characters');
+    }
 
     const existingUser = await User.findOne({
         $or: [{ phoneNumber: cleanPhoneNumber }, { email: cleanEmail }]
     });
+
     if (existingUser) {
         throw new ApiError(409, 'Phone number or email already registered. Please login instead.');
     }
 
-    await createOtpRecord({ email: cleanEmail, phoneNumber: cleanPhoneNumber, purpose: 'signup' });
+    await createOtpRecord({
+        email: cleanEmail,
+        phoneNumber: cleanPhoneNumber,
+        purpose: 'signup'
+    });
 
     return {
         email: cleanEmail,
         phoneNumber: cleanPhoneNumber,
-        fullName: fullName.trim(),
+        fullName: cleanFullName,
         message: 'OTP has been resent to your email.'
     };
 };
