@@ -8,18 +8,21 @@ let transporter = null;
 if (config.email.enabled) {
     transporter = nodemailer.createTransport({
         host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
+        port: 587,
+        secure: false,
         family: 4,
         auth: {
             user: EMAIL_USER,
             pass: EMAIL_PASS
         },
-        connectionTimeout: 20000,
-        greetingTimeout: 20000,
-        socketTimeout: 20000,
+        requireTLS: true,
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 15000,
         tls: {
-            servername: 'smtp.gmail.com'
+            minVersion: 'TLSv1.2',
+            servername: 'smtp.gmail.com',
+            rejectUnauthorized: true
         }
     });
 
@@ -54,15 +57,11 @@ const purposeSubject = {
 export const sendOTP = async (email, otp, purpose = 'login') => {
     const cleanEmail = sanitizeEmail(email);
 
-    if (config.app.isDev) {
-        console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`📧 Email OTP for ${cleanEmail}: ${otp}`);
-        console.log(`Purpose: ${purpose}`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    }
-
     if (!config.email.enabled) {
         console.warn('⚠️ Email not configured - using dev mode');
+        if (config.app.isDev) {
+            console.log(`📧 Email OTP for ${cleanEmail}: ${otp}`);
+        }
         return { success: true, message: 'Dev mode - Check console for OTP' };
     }
 
