@@ -8,18 +8,36 @@ import { ApiError } from '../../shared/utils/apiError.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
+
+const toAbsoluteUrl = (filePath) => {
+  if (!filePath) return '';
+  if (filePath.startsWith('http://') || filePath.startsWith('https://')) return filePath;
+  return `${PUBLIC_BASE_URL}${filePath.startsWith('/') ? '' : '/'}${filePath}`;
+};
+
 export const getAllBannersPublicService = async () => {
-  return Banner.find({ isActive: true })
+  const banners = await Banner.find({ isActive: true })
     .sort({ order: 1 })
-    .select('imageUrl')
+    .select('imageUrl order isActive createdAt updatedAt')
     .lean();
+
+  return banners.map((banner) => ({
+    ...banner,
+    imageUrl: toAbsoluteUrl(banner.imageUrl),
+  }));
 };
 
 export const getAllBannersAdminService = async () => {
-  return Banner.find()
+  const banners = await Banner.find()
     .sort({ order: 1, createdAt: -1 })
     .populate('createdBy', 'username fullName')
     .lean();
+
+  return banners.map((banner) => ({
+    ...banner,
+    imageUrl: toAbsoluteUrl(banner.imageUrl),
+  }));
 };
 
 export const uploadBannerService = async ({ file, adminId }) => {
@@ -35,10 +53,13 @@ export const uploadBannerService = async ({ file, adminId }) => {
   const banner = await Banner.create({
     imageUrl,
     order: newOrder,
-    createdBy: adminId
+    createdBy: adminId,
   });
 
-  return banner;
+  return {
+    ...banner.toObject(),
+    imageUrl: toAbsoluteUrl(imageUrl),
+  };
 };
 
 export const deleteBannerService = async ({ id }) => {
@@ -49,8 +70,9 @@ export const deleteBannerService = async ({ id }) => {
   }
 
   if (banner.imageUrl) {
-    // Resolve from project root: src/modules/banner/ → go up 3 levels to reach root
-    const imagePath = path.join(__dirname, '../../..', banner.imageUrl);
+    const relativePath = banner.imageUrl.replace(PUBLIC_BASE_URL, '');
+    const imagePath = path.join(__dirname, '../../..', relativePath);
+
     if (fs.existsSync(imagePath)) {
       fs.unlinkSync(imagePath);
     }
@@ -70,7 +92,10 @@ export const toggleBannerStatusService = async ({ id }) => {
   banner.isActive = !banner.isActive;
   await banner.save();
 
-  return banner;
+  return {
+    ...banner.toObject(),
+    imageUrl: toAbsoluteUrl(banner.imageUrl),
+  };
 };
 
 export const reorderBannersService = async ({ banners }) => {
@@ -78,10 +103,9 @@ export const reorderBannersService = async ({ banners }) => {
     throw new ApiError(400, 'Banners array is required');
   }
 
-  const updatePromises = banners.map(({ id, order }) =>
-    Banner.findByIdAndUpdate(id, { order }, { new: true })
+  await Promise.all(
+    banners.map(({ id, order }) => Banner.findByIdAndUpdate(id, { order }, { new: true }))
   );
 
-  await Promise.all(updatePromises);
   return null;
 };

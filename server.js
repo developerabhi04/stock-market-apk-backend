@@ -15,16 +15,18 @@ app.get('/health/db-stats', (_req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
 
 const server = app.listen(PORT, () => {
   console.log('\n🚀 TradeHub Backend Started Successfully!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`📡 Server running on port: ${PORT}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Health Check: http://localhost:${PORT}/health`);
-  console.log(`📊 Auth API: http://localhost:${PORT}/api/v1/auth`);
-  console.log(`📊 User API: http://localhost:${PORT}/api/v1/user`);
-  console.log(`📁 Uploads: http://localhost:${PORT}/uploads`);
+  console.log(`🌐 Base URL: ${PUBLIC_BASE_URL || `http://localhost:${PORT}`}`);
+  console.log(`❤️ Health Check: ${PUBLIC_BASE_URL ? `${PUBLIC_BASE_URL}/health` : `http://localhost:${PORT}/health`}`);
+  console.log(`🔐 Auth API: ${PUBLIC_BASE_URL ? `${PUBLIC_BASE_URL}/api/v1/auth` : `http://localhost:${PORT}/api/v1/auth`}`);
+  console.log(`👤 User API: ${PUBLIC_BASE_URL ? `${PUBLIC_BASE_URL}/api/v1/user` : `http://localhost:${PORT}/api/v1/user`}`);
+  console.log(`🖼️ Uploads: ${PUBLIC_BASE_URL ? `${PUBLIC_BASE_URL}/uploads` : `http://localhost:${PORT}/uploads`}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   registerJobs();

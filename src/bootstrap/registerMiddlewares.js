@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -21,28 +22,42 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const normalizeOrigin = (origin = '') => origin.trim().replace(/\/$/, '');
+
 export const registerMiddlewares = (app) => {
     app.set('trust proxy', 1);
 
-    app.use(helmet());
-    app.use(mongoSanitizeMiddleware);
-
+    const uploadsDir = path.join(__dirname, '../../uploads');
+    const publicBaseUrl = normalizeOrigin(process.env.PUBLIC_BASE_URL || '');
     const allowedOrigins = (process.env.CLIENT_URL || '')
         .split(',')
-        .map((o) => o.trim().replace(/\/$/, ''))
+        .map(normalizeOrigin)
         .filter(Boolean);
+
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    console.log('📁 uploadsDir:', uploadsDir);
+    console.log('🌐 PUBLIC_BASE_URL:', publicBaseUrl || 'Not set');
+    console.log('🛡️ Allowed Origins:', allowedOrigins.length ? allowedOrigins : ['*']);
+
+    app.use(
+        helmet({
+            crossOriginResourcePolicy: false,
+        })
+    );
+
+    app.use(mongoSanitizeMiddleware);
 
     app.use(
         cors({
             origin: (origin, callback) => {
                 if (!origin) return callback(null, true);
 
-                const normalizedOrigin = origin.replace(/\/$/, '');
+                const normalizedOrigin = normalizeOrigin(origin);
 
-                if (
-                    allowedOrigins.length === 0 ||
-                    allowedOrigins.includes(normalizedOrigin)
-                ) {
+                if (allowedOrigins.length === 0 || allowedOrigins.includes(normalizedOrigin)) {
                     return callback(null, true);
                 }
 
@@ -51,7 +66,7 @@ export const registerMiddlewares = (app) => {
             credentials: true,
             methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
             allowedHeaders: ['Content-Type', 'Authorization'],
-            optionsSuccessStatus: 200
+            optionsSuccessStatus: 200,
         })
     );
 
@@ -69,8 +84,8 @@ export const registerMiddlewares = (app) => {
         keyGenerator: limiterKey,
         message: {
             success: false,
-            message: 'Too many requests from this IP, please try again after 15 minutes.'
-        }
+            message: 'Too many requests from this IP, please try again after 15 minutes.',
+        },
     });
 
     const authLimiter = rateLimit({
@@ -81,8 +96,8 @@ export const registerMiddlewares = (app) => {
         keyGenerator: limiterKey,
         message: {
             success: false,
-            message: 'Too many auth attempts, please try again after 15 minutes.'
-        }
+            message: 'Too many auth attempts, please try again after 15 minutes.',
+        },
     });
 
     app.use('/api', globalLimiter);
@@ -91,20 +106,36 @@ export const registerMiddlewares = (app) => {
     app.use(
         '/uploads',
         (req, res, next) => {
-            res.header('Access-Control-Allow-Origin', '*');
+            const requestOrigin = normalizeOrigin(req.headers.origin || '');
+
+            if (requestOrigin && (allowedOrigins.length === 0 || allowedOrigins.includes(requestOrigin))) {
+                res.header('Access-Control-Allow-Origin', requestOrigin);
+            } else {
+                res.header('Access-Control-Allow-Origin', '*');
+            }
+
             res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+            res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+            res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             next();
         },
-        express.static(path.join(__dirname, '../../uploads'))
+        express.static(uploadsDir, {
+            maxAge: '7d',
+            etag: true,
+            lastModified: true,
+            index: false,
+        })
     );
 
     app.use('/api', dbHealthCheck);
 
     app.get('/', (_req, res) => {
         res.status(200).json({
+            success: true,
             message: `${config.app.name} API is running`,
             version: '1.0.0',
             environment: config.app.env,
+            baseUrl: publicBaseUrl || null,
             endpoints: {
                 auth: '/api/v1/auth',
                 wallet: '/api/v1/wallet',
@@ -112,9 +143,10 @@ export const registerMiddlewares = (app) => {
                 user: '/api/v1/user',
                 banners: '/api/v1/banners',
                 market: '/api/v1/admin/market',
-                categories: '/api/v1/admin/categories',
-                notifications: '/api/v1/notifications'
-            }
+                categories: '/api/v1/admin/market/categories',
+                notifications: '/api/v1/notifications',
+                uploads: '/uploads',
+            },
         });
     });
 
@@ -125,7 +157,8 @@ export const registerMiddlewares = (app) => {
             status: 'OK',
             app: config.app.name,
             timestamp: new Date().toISOString(),
-            uptime: `${Math.floor(process.uptime())}s`
+            uptime: `${Math.floor(process.uptime())}s`,
+            baseUrl: publicBaseUrl || null,
         });
     });
 };
