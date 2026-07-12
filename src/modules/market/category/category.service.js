@@ -3,6 +3,7 @@ import Category from './category.model.js';
 import Index from '../index/index.model.js';
 import { ApiError } from '../../../shared/utils/apiError.js';
 
+
 const slugify = (value = '') =>
     value
         .trim()
@@ -11,6 +12,7 @@ const slugify = (value = '') =>
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '')
         .replace(/-+/g, '-');
+
 
 const attachIndicesCount = async (categories = [], activeOnly = false) => {
     if (!categories.length) return [];
@@ -45,44 +47,6 @@ const attachIndicesCount = async (categories = [], activeOnly = false) => {
     }));
 };
 
-export const ensureDefaultCategoriesService = async () => {
-    const defaultCategories = [
-        {
-            name: 'Indian Indices',
-            slug: 'indian-indices',
-            description: 'Major Indian market indices',
-            displayOrder: 1,
-            icon: 'flag',
-            color: '#00C896',
-            isActive: true,
-        },
-        {
-            name: 'Global Indices',
-            slug: 'global-indices',
-            description: 'Major global market indices',
-            displayOrder: 2,
-            icon: 'earth',
-            color: '#2196F3',
-            isActive: true,
-        },
-        {
-            name: 'Crypto',
-            slug: 'crypto',
-            description: 'Crypto market indices',
-            displayOrder: 3,
-            icon: 'bitcoin',
-            color: '#FF9800',
-            isActive: true,
-        },
-    ];
-
-    for (const item of defaultCategories) {
-        const exists = await Category.findOne({ slug: item.slug }).lean();
-        if (!exists) {
-            await Category.create(item);
-        }
-    }
-};
 
 export const getAllCategoriesService = async () => {
     const categories = await Category.find()
@@ -93,6 +57,7 @@ export const getAllCategoriesService = async () => {
     return await attachIndicesCount(categories, false);
 };
 
+
 export const getActiveCategoriesService = async () => {
     const categories = await Category.find({ isActive: true })
         .sort({ displayOrder: 1, createdAt: 1 })
@@ -100,6 +65,7 @@ export const getActiveCategoriesService = async () => {
 
     return await attachIndicesCount(categories, true);
 };
+
 
 export const createCategoryService = async ({ payload, adminId }) => {
     const { name, description, displayOrder, isActive, icon, color } = payload;
@@ -131,6 +97,7 @@ export const createCategoryService = async ({ payload, adminId }) => {
 
     return category;
 };
+
 
 export const updateCategoryService = async ({ id, payload }) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -172,6 +139,7 @@ export const updateCategoryService = async ({ id, payload }) => {
     return category;
 };
 
+
 export const deleteCategoryService = async ({ id }) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
         throw new ApiError(400, 'Invalid category id');
@@ -195,6 +163,7 @@ export const deleteCategoryService = async ({ id }) => {
     await Category.findByIdAndDelete(id);
     return null;
 };
+
 
 export const getCategoryStatsService = async () => {
     const totalCategories = await Category.countDocuments();
@@ -226,6 +195,7 @@ export const getCategoryStatsService = async () => {
         topCategories,
     };
 };
+
 
 export const getCategoryBySlugOrNameService = async (value) => {
     if (!value?.trim()) {
