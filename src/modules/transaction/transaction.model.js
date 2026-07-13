@@ -23,13 +23,10 @@ const transactionSchema = new mongoose.Schema(
                 'profit',
                 'loss',
                 'refund',
-                'signup_bonus',
-                // ─── New investment categories ───
                 'investment_principal_debit',
                 'investment_interest',
                 'investment_principal_return',
-                'investment_refund',
-
+                'investment_refund'
             ],
             required: true,
             index: true
@@ -46,14 +43,6 @@ const transactionSchema = new mongoose.Schema(
         balanceAfter: {
             type: Number,
             required: true
-        },
-        bonusBalanceBefore: {
-            type: Number,
-            default: 0
-        },
-        bonusBalanceAfter: {
-            type: Number,
-            default: 0
         },
         status: {
             type: String,
@@ -107,7 +96,6 @@ const transactionSchema = new mongoose.Schema(
             dailyRate: Number,
             dailyInterestAmount: Number,
             creditDate: Date,
-            bonusUsed: Number,
             walletUsed: Number
         },
         description: String,

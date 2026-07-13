@@ -33,7 +33,7 @@ export const getPendingWithdrawalsService = async ({ page = 1, limit = 20 }) => 
     const limitNum = Number(limit);
 
     const withdrawals = await Transaction.find(filter)
-        .populate('userId', 'fullName phoneNumber walletBalance bonusBalance')
+        .populate('userId', 'fullName phoneNumber walletBalance')
         .sort({ createdAt: -1 })
         .limit(limitNum)
         .skip((pageNum - 1) * limitNum)
@@ -104,7 +104,7 @@ export const approvePaymentService = async ({ transactionId, verificationNote, a
 
         return {
             transaction,
-            newBalance: balanceAfter + user.bonusBalance,
+            newBalance: balanceAfter,
             message: `₹${transaction.amount} has been added to user's wallet`
         };
     } catch (error) {
@@ -222,7 +222,6 @@ export const rejectWithdrawalService = async ({ transactionId, reason, adminId }
             throw new ApiError(404, 'User not found');
         }
 
-        // Refund the deducted amount back to user
         user.walletBalance += transaction.amount;
         await user.save({ session });
 

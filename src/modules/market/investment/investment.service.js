@@ -7,7 +7,7 @@ import InterestSlab from '../interest-slab/interestSlab.model.js';
 import { ApiError } from '../../../shared/utils/apiError.js';
 
 const MIN_INVESTMENT_AMOUNT = 5000;
-const MAX_INVESTMENT_AMOUNT = 100000;
+const MAX_INVESTMENT_AMOUNT = 500000;
 const DEFAULT_LOCK_PERIOD_DAYS = 30;
 
 const normalizeAmount = (value) => {
@@ -121,8 +121,6 @@ const createInvestmentTransaction = async ({
                 amount: Number(amount),
                 balanceBefore: Number(balanceBefore),
                 balanceAfter: Number(balanceAfter),
-                bonusBalanceBefore: Number(user.bonusBalance || 0),
-                bonusBalanceAfter: Number(user.bonusBalance || 0),
                 status: 'completed',
                 description,
                 metadata,
@@ -136,10 +134,10 @@ const createInvestmentTransaction = async ({
                 },
                 adminAction: adminId
                     ? {
-                        actionType: 'approved',
-                        actionBy: adminId,
-                        actionAt: new Date(),
-                    }
+                          actionType: 'approved',
+                          actionBy: adminId,
+                          actionAt: new Date(),
+                      }
                     : undefined,
             },
         ],
@@ -207,7 +205,7 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
 
     try {
         const user = await User.findById(userId)
-            .select('_id fullName walletBalance bonusBalance isVerified isActive')
+            .select('_id fullName walletBalance isVerified isActive')
             .session(session);
 
         if (!user || !user.isActive) {
@@ -401,7 +399,7 @@ export const getAllInvestmentOrdersAdminService = async ({ query = {} }) => {
 
     const [investments, total] = await Promise.all([
         Investment.find(filter)
-            .populate('userId', 'fullName phoneNumber walletBalance bonusBalance')
+            .populate('userId', 'fullName phoneNumber walletBalance')
             .populate('indexId', 'name symbol logoUrl currentValue')
             .populate('categoryId', 'name slug color icon')
             .populate('approvedBy', 'username role')
@@ -433,7 +431,7 @@ export const getInvestmentByIdService = async ({ investmentId, userId = null, ad
     }
 
     const investment = await Investment.findOne(filter)
-        .populate('userId', 'fullName phoneNumber walletBalance bonusBalance')
+        .populate('userId', 'fullName phoneNumber walletBalance')
         .populate('indexId', 'name symbol logoUrl currentValue')
         .populate('categoryId', 'name slug color icon')
         .populate('slabId', 'title minAmount maxAmount dailyRate')
@@ -483,7 +481,7 @@ export const overrideInvestmentRateAdminService = async ({
     await investment.save();
 
     const updatedInvestment = await Investment.findById(investment._id)
-        .populate('userId', 'fullName phoneNumber walletBalance bonusBalance')
+        .populate('userId', 'fullName phoneNumber walletBalance')
         .populate('indexId', 'name symbol logoUrl currentValue')
         .populate('categoryId', 'name slug color icon')
         .lean({ virtuals: true });
@@ -497,7 +495,7 @@ export const approveInvestmentOrderAdminService = async ({ investmentId }) => {
     }
 
     const investment = await Investment.findById(investmentId)
-        .populate('userId', 'fullName phoneNumber walletBalance bonusBalance')
+        .populate('userId', 'fullName phoneNumber walletBalance')
         .populate('indexId', 'name symbol logoUrl currentValue')
         .populate('categoryId', 'name slug color icon')
         .lean({ virtuals: true });
@@ -600,7 +598,7 @@ export const cancelInvestmentService = async ({ investmentId, userId }) => {
         await session.commitTransaction();
 
         const cancelledInvestment = await Investment.findById(investment._id)
-            .populate('userId', 'fullName phoneNumber walletBalance bonusBalance')
+            .populate('userId', 'fullName phoneNumber walletBalance')
             .populate('indexId', 'name symbol logoUrl currentValue')
             .populate('categoryId', 'name slug color icon')
             .lean({ virtuals: true });

@@ -156,8 +156,6 @@ const runInterestCreditJob = async () => {
                             amount: dailyAmount,
                             balanceBefore,
                             balanceAfter,
-                            bonusBalanceBefore: Number(user.bonusBalance || 0),
-                            bonusBalanceAfter: Number(user.bonusBalance || 0),
                             status: 'completed',
                             description: `Daily interest credited for ${investment.indexSnapshot?.name || 'investment'} — Day ${investment.daysCompleted}`,
                             metadata: {

@@ -136,7 +136,7 @@ export const getAllAdminsService = async () => {
         .sort({ createdAt: -1 })
         .lean();
 
-    return { admins };  // ← wrap in object
+    return { admins };
 };
 
 export const deleteAdminService = async ({ adminId, currentAdminId }) => {
@@ -240,10 +240,8 @@ export const getCompleteDashboardStatsService = async () => {
         createdAt: { $gte: start }
     });
 
-    const users = await User.find({ isActive: true }).select('walletBalance bonusBalance').lean();
+    const users = await User.find({ isActive: true }).select('walletBalance').lean();
     const totalWalletBalance = users.reduce((sum, user) => sum + (user.walletBalance || 0), 0);
-    const totalBonusBalance = users.reduce((sum, user) => sum + (user.bonusBalance || 0), 0);
-    const grandTotal = totalWalletBalance + totalBonusBalance;
 
     const pendingPayments = await Transaction.countDocuments({ category: 'add_money', status: 'pending' });
     const pendingWithdrawals = await Transaction.countDocuments({ category: 'withdrawal', status: 'pending' });
@@ -282,8 +280,6 @@ export const getCompleteDashboardStatsService = async () => {
         },
         financial: {
             totalWalletBalance,
-            totalBonusBalance,
-            grandTotal,
             totalWithdrawals,
             netBalance: totalWalletBalance - totalWithdrawals
         },
@@ -349,7 +345,7 @@ export const getAllUsersService = async ({
     const limitNum = Number(limit);
 
     const users = await User.find(filter)
-        .select('fullName phoneNumber walletBalance bonusBalance kycStatus isVerified createdAt lastLogin')
+        .select('fullName phoneNumber walletBalance kycStatus isVerified createdAt lastLogin')
         .sort(sort)
         .limit(limitNum)
         .skip((pageNum - 1) * limitNum)
@@ -357,19 +353,13 @@ export const getAllUsersService = async ({
 
     const count = await User.countDocuments(filter);
     const totalWalletBalance = users.reduce((sum, user) => sum + (user.walletBalance || 0), 0);
-    const totalBonusBalance = users.reduce((sum, user) => sum + (user.bonusBalance || 0), 0);
 
     return {
-        users: users.map((user) => ({
-            ...user,
-            totalBalance: (user.walletBalance || 0) + (user.bonusBalance || 0)
-        })),
+        users,
         totalPages: Math.ceil(count / limitNum),
         currentPage: pageNum,
         totalUsers: count,
-        totalWalletBalance,
-        totalBonusBalance,
-        grandTotal: totalWalletBalance + totalBonusBalance
+        totalWalletBalance
     };
 };
 
@@ -397,10 +387,7 @@ export const getUserDetailsService = async ({ userId }) => {
         .lean();
 
     return {
-        user: {
-            ...user,
-            totalBalance: (user.walletBalance || 0) + (user.bonusBalance || 0)
-        },
+        user,
         transactionStats,
         recentTransactions
     };
@@ -445,8 +432,6 @@ export const updateUserBalanceService = async ({ userId, amount, type, reason, a
                     amount: parsedAmount,
                     balanceBefore,
                     balanceAfter,
-                    bonusBalanceBefore: user.bonusBalance,
-                    bonusBalanceAfter: user.bonusBalance,
                     status: 'completed',
                     description: `Manual balance ${type} by admin: ${reason}`,
                     adminAction: {
@@ -468,7 +453,7 @@ export const updateUserBalanceService = async ({ userId, amount, type, reason, a
                 fullName: user.fullName,
                 phoneNumber: user.phoneNumber,
                 newWalletBalance: balanceAfter,
-                newTotalBalance: balanceAfter + user.bonusBalance
+                newTotalBalance: balanceAfter
             },
             message: `Balance ${type}ed successfully`
         };
@@ -491,7 +476,6 @@ export const getUserStatsService = async () => {
             $group: {
                 _id: null,
                 totalWalletBalance: { $sum: '$walletBalance' },
-                totalBonusBalance: { $sum: '$bonusBalance' },
                 avgWalletBalance: { $avg: '$walletBalance' }
             }
         }
@@ -499,7 +483,6 @@ export const getUserStatsService = async () => {
 
     const stats = walletStats[0] || {
         totalWalletBalance: 0,
-        totalBonusBalance: 0,
         avgWalletBalance: 0
     };
 
@@ -508,8 +491,6 @@ export const getUserStatsService = async () => {
         verifiedUsers,
         kycPendingUsers,
         totalWalletBalance: stats.totalWalletBalance,
-        totalBonusBalance: stats.totalBonusBalance,
-        grandTotal: stats.totalWalletBalance + stats.totalBonusBalance,
         avgWalletBalance: stats.avgWalletBalance
     };
 };
@@ -658,7 +639,7 @@ export const createStockService = async (payload) => {
     }
 
     const change = Number(price) - Number(previousClose);
-    const changePercent = Number((((change) / Number(previousClose)) * 100).toFixed(2));
+    const changePercent = Number(((change / Number(previousClose)) * 100).toFixed(2));
 
     const stock = await Stock.create({
         name: name.trim(),
@@ -692,7 +673,7 @@ export const updateStockService = async ({ id, updateData }) => {
     if (updateData.price) {
         const previousClose = updateData.previousClose ?? stock.previousClose;
         updateData.change = Number(updateData.price) - Number(previousClose);
-        updateData.changePercent = Number((((updateData.change) / Number(previousClose)) * 100).toFixed(2));
+        updateData.changePercent = Number(((updateData.change / Number(previousClose)) * 100).toFixed(2));
         updateData.lastUpdated = new Date();
     }
 

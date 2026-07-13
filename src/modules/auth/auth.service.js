@@ -1,14 +1,12 @@
 import mongoose from 'mongoose';
 import User from '../user/user.model.js';
 import OTP from './otp.model.js';
-import Transaction from '../transaction/transaction.model.js';
 import { generateOTP, sendOTP } from '../../shared/utils/otpService.js';
 import { generateToken } from '../../shared/utils/jwtService.js';
 import { ApiError } from '../../shared/utils/apiError.js';
 import { sanitizePhoneNumber, sanitizeOTP } from './auth.validator.js';
 
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
-const SIGNUP_BONUS = 500;
 
 const createOtpRecord = async ({ phoneNumber, purpose }) => {
     const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
@@ -107,8 +105,6 @@ export const verifyLoginOtpService = async ({ phoneNumber, otp }) => {
             fullName: user.fullName,
             phoneNumber: user.phoneNumber,
             walletBalance: user.walletBalance,
-            bonusBalance: user.bonusBalance,
-            totalBalance: user.totalBalance,
             kycStatus: user.kycStatus,
             isVerified: user.isVerified
         },
@@ -159,27 +155,7 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, otp }) => 
                     phoneNumber: cleanPhoneNumber,
                     isVerified: true,
                     walletBalance: 0,
-                    bonusBalance: SIGNUP_BONUS,
-                    signupBonusReceived: true,
                     lastLogin: new Date()
-                }
-            ],
-            { session }
-        );
-
-        await Transaction.create(
-            [
-                {
-                    userId: user[0]._id,
-                    type: 'credit',
-                    category: 'signup_bonus',
-                    amount: SIGNUP_BONUS,
-                    balanceBefore: 0,
-                    balanceAfter: 0,
-                    bonusBalanceBefore: 0,
-                    bonusBalanceAfter: SIGNUP_BONUS,
-                    status: 'completed',
-                    description: `Welcome bonus - ₹${SIGNUP_BONUS} credited to your account`
                 }
             ],
             { session }
@@ -195,13 +171,11 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, otp }) => 
                 fullName: user[0].fullName,
                 phoneNumber: user[0].phoneNumber,
                 walletBalance: user[0].walletBalance,
-                bonusBalance: user[0].bonusBalance,
-                totalBalance: user[0].walletBalance + user[0].bonusBalance,
                 kycStatus: user[0].kycStatus,
                 isVerified: user[0].isVerified
             },
             token,
-            message: `🎉 Welcome! You've received ₹${SIGNUP_BONUS} signup bonus!`
+            message: 'Signup successful!'
         };
     } catch (error) {
         await session.abortTransaction();

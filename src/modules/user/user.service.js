@@ -49,8 +49,6 @@ export const getUserProfileService = async ({ userId }) => {
             phoneNumber: user.phoneNumber,
             countryCode: user.countryCode,
             walletBalance: user.walletBalance,
-            bonusBalance: user.bonusBalance,
-            totalBalance: user.walletBalance + user.bonusBalance,
             isVerified: user.isVerified,
             kycStatus: user.kycStatus,
             panCard: user.panCard,
@@ -59,7 +57,6 @@ export const getUserProfileService = async ({ userId }) => {
                 ...account,
                 maskedAccountNumber: maskAccountNumber(account.accountNumber)
             })),
-            signupBonusReceived: user.signupBonusReceived,
             lastLogin: user.lastLogin,
             createdAt: user.createdAt
         }
@@ -84,9 +81,7 @@ export const updateUserProfileService = async ({ userId, fullName }) => {
             id: user._id,
             fullName: user.fullName,
             phoneNumber: user.phoneNumber,
-            walletBalance: user.walletBalance,
-            bonusBalance: user.bonusBalance,
-            totalBalance: user.walletBalance + user.bonusBalance
+            walletBalance: user.walletBalance
         }
     };
 };
@@ -252,25 +247,11 @@ export const updateBankAccountService = async ({
         throw new ApiError(400, 'Another bank account with same details already exists');
     }
 
-    if (bankName !== undefined) {
-        account.bankName = bankName.trim();
-    }
-
-    if (accountHolderName !== undefined) {
-        account.accountHolderName = accountHolderName.trim();
-    }
-
-    if (accountNumber !== undefined) {
-        account.accountNumber = normalizedAccountNumber;
-    }
-
-    if (ifscCode !== undefined) {
-        account.ifscCode = normalizedIfscCode;
-    }
-
-    if (accountType !== undefined) {
-        account.accountType = accountType;
-    }
+    if (bankName !== undefined) account.bankName = bankName.trim();
+    if (accountHolderName !== undefined) account.accountHolderName = accountHolderName.trim();
+    if (accountNumber !== undefined) account.accountNumber = normalizedAccountNumber;
+    if (ifscCode !== undefined) account.ifscCode = normalizedIfscCode;
+    if (accountType !== undefined) account.accountType = accountType;
 
     if (isPrimary === true) {
         user.bankAccounts.forEach((item) => {

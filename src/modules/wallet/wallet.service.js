@@ -4,19 +4,16 @@ import Transaction from '../transaction/transaction.model.js';
 import { ApiError } from '../../shared/utils/apiError.js';
 
 export const getWalletBalanceService = async ({ userId }) => {
-    const user = await User.findById(userId).select('walletBalance bonusBalance').lean();
+    const user = await User.findById(userId).select('walletBalance').lean();
 
     if (!user) {
         throw new ApiError(404, 'User not found');
     }
 
-    const totalBalance = user.walletBalance + user.bonusBalance;
-
     return {
         walletBalance: user.walletBalance,
-        bonusBalance: user.bonusBalance,
-        balance: totalBalance,
-        formattedBalance: `₹${totalBalance.toFixed(2)}`
+        balance: user.walletBalance,
+        formattedBalance: `₹${user.walletBalance.toFixed(2)}`
     };
 };
 
@@ -48,7 +45,7 @@ export const addMoneyService = async ({
         throw new ApiError(409, 'This UTR number has already been used');
     }
 
-    const user = await User.findById(userId).select('walletBalance bonusBalance');
+    const user = await User.findById(userId).select('walletBalance');
 
     if (!user) {
         throw new ApiError(404, 'User not found');
@@ -62,9 +59,7 @@ export const addMoneyService = async ({
         category: 'add_money',
         amount: Number(amount),
         balanceBefore,
-        balanceAfter: balanceBefore, // unchanged until admin approves
-        bonusBalanceBefore: user.bonusBalance,
-        bonusBalanceAfter: user.bonusBalance,
+        balanceAfter: balanceBefore,
         status: 'pending',
         paymentDetails: {
             method: paymentMethod || 'UPI',
@@ -121,7 +116,6 @@ export const withdrawMoneyService = async ({
             throw new ApiError(404, 'User not found');
         }
 
-        // Verify bank account belongs to this user (if they have registered accounts)
         if (user.bankAccounts && user.bankAccounts.length > 0) {
             const bankAccountExists = user.bankAccounts.some(
                 (account) => account.accountNumber === accountNumber
@@ -135,7 +129,7 @@ export const withdrawMoneyService = async ({
         if (user.walletBalance < Number(amount)) {
             throw new ApiError(
                 400,
-                `Insufficient withdrawable balance. Available: ₹${user.walletBalance.toFixed(2)} (Bonus: ₹${user.bonusBalance.toFixed(2)} cannot be withdrawn)`
+                `Insufficient withdrawable balance. Available: ₹${user.walletBalance.toFixed(2)}`
             );
         }
 
@@ -154,8 +148,6 @@ export const withdrawMoneyService = async ({
                     amount: Number(amount),
                     balanceBefore,
                     balanceAfter,
-                    bonusBalanceBefore: user.bonusBalance,
-                    bonusBalanceAfter: user.bonusBalance,
                     status: 'pending',
                     withdrawalDetails: {
                         accountNumber,
@@ -177,7 +169,7 @@ export const withdrawMoneyService = async ({
         return {
             transaction,
             newWalletBalance: balanceAfter,
-            newTotalBalance: balanceAfter + user.bonusBalance,
+            newTotalBalance: balanceAfter,
             message:
                 'Withdrawal request submitted successfully. Amount will be transferred within 1-3 business days after approval.'
         };

@@ -2,21 +2,9 @@ import mongoose from 'mongoose';
 
 const bankAccountSchema = new mongoose.Schema(
     {
-        bankName: {
-            type: String,
-            required: true,
-            trim: true
-        },
-        accountHolderName: {
-            type: String,
-            required: true,
-            trim: true
-        },
-        accountNumber: {
-            type: String,
-            required: true,
-            trim: true
-        },
+        bankName: { type: String, required: true, trim: true },
+        accountHolderName: { type: String, required: true, trim: true },
+        accountNumber: { type: String, required: true, trim: true },
         ifscCode: {
             type: String,
             required: true,
@@ -24,26 +12,11 @@ const bankAccountSchema = new mongoose.Schema(
             uppercase: true,
             match: [/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code format']
         },
-        accountType: {
-            type: String,
-            enum: ['Savings', 'Current'],
-            default: 'Savings'
-        },
-        isPrimary: {
-            type: Boolean,
-            default: false
-        },
-        isVerified: {
-            type: Boolean,
-            default: false
-        },
-        verifiedAt: {
-            type: Date
-        },
-        addedAt: {
-            type: Date,
-            default: Date.now
-        }
+        accountType: { type: String, enum: ['Savings', 'Current'], default: 'Savings' },
+        isPrimary: { type: Boolean, default: false },
+        isVerified: { type: Boolean, default: false },
+        verifiedAt: { type: Date },
+        addedAt: { type: Date, default: Date.now }
     },
     { _id: true }
 );
@@ -63,18 +36,10 @@ const userSchema = new mongoose.Schema(
             unique: true,
             match: [/^[0-9]{10}$/, 'Please enter a valid 10-digit phone number']
         },
-        countryCode: {
-            type: String,
-            default: '+91'
-        },
-        isVerified: {
-            type: Boolean,
-            default: false
-        },
-        isActive: {
-            type: Boolean,
-            default: true
-        },
+        countryCode: { type: String, default: '+91' },
+        isVerified: { type: Boolean, default: false },
+        isActive: { type: Boolean, default: true },
+
         kycStatus: {
             type: String,
             enum: ['pending', 'submitted', 'verified', 'rejected'],
@@ -93,20 +58,7 @@ const userSchema = new mongoose.Schema(
             verifiedAt: Date
         },
         bankAccounts: [bankAccountSchema],
-        walletBalance: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        bonusBalance: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        signupBonusReceived: {
-            type: Boolean,
-            default: false
-        },
+        walletBalance: { type: Number, default: 0, min: 0 },
         lastLogin: Date,
         deviceInfo: {
             deviceId: String,
@@ -132,39 +84,19 @@ userSchema.pre('save', function (next) {
     next();
 });
 
-userSchema.virtual('totalBalance').get(function () {
-    return this.walletBalance + this.bonusBalance;
-});
-
-userSchema.virtual('withdrawableBalance').get(function () {
-    return this.walletBalance;
-});
-
 userSchema.methods.canTrade = function () {
-    return this.isVerified && this.totalBalance >= 10;
+    return this.isVerified && this.walletBalance >= 10;
 };
 
 userSchema.methods.deductAmount = function (amount) {
-    if (this.totalBalance < amount) {
+    if (this.walletBalance < amount) {
         throw new Error('Insufficient balance');
     }
 
-    let remaining = amount;
-
-    if (this.bonusBalance > 0) {
-        const bonusUsed = Math.min(this.bonusBalance, remaining);
-        this.bonusBalance -= bonusUsed;
-        remaining -= bonusUsed;
-    }
-
-    if (remaining > 0) {
-        this.walletBalance -= remaining;
-    }
+    this.walletBalance -= amount;
 
     return {
-        bonusUsed: amount - remaining,
-        walletUsed: remaining,
-        newBonusBalance: this.bonusBalance,
+        walletUsed: amount,
         newWalletBalance: this.walletBalance
     };
 };

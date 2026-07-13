@@ -2,9 +2,10 @@ import mongoose from 'mongoose';
 import Index from './index.model.js';
 import Category from '../category/category.model.js';
 import { ApiError } from '../../../shared/utils/apiError.js';
-import { ensureDefaultCategoriesService } from '../category/category.service.js';
+
 
 const normalizeCategoryInput = (value = '') => value.trim().toLowerCase();
+
 
 const normalizeDefaultDailyRate = (value) => {
   if (value === '' || value === null || typeof value === 'undefined') {
@@ -24,6 +25,7 @@ const normalizeDefaultDailyRate = (value) => {
   return Number(numericValue.toFixed(2));
 };
 
+
 const findCategoryFromInput = async (categoryValue) => {
   if (!categoryValue || categoryValue === 'All' || categoryValue === 'All Indices') {
     return null;
@@ -40,6 +42,7 @@ const findCategoryFromInput = async (categoryValue) => {
 
   return category;
 };
+
 
 const buildFilters = async (query = {}, publicOnly = false) => {
   const { category, featured, isFeatured, isActive, search } = query;
@@ -83,12 +86,14 @@ const buildFilters = async (query = {}, publicOnly = false) => {
   return filters;
 };
 
+
 const calculatePagination = (page = 1, limit = 20) => {
   const pageNumber = Math.max(Number(page) || 1, 1);
   const limitNumber = Math.max(Number(limit) || 20, 1);
   const skip = (pageNumber - 1) * limitNumber;
   return { pageNumber, limitNumber, skip };
 };
+
 
 const mapIndexResponse = (item) => ({
   ...item,
@@ -101,9 +106,8 @@ const mapIndexResponse = (item) => ({
   categorySlug: item.category?.slug || '',
 });
 
-export const getAllIndicesService = async (query) => {
-  await ensureDefaultCategoriesService();
 
+export const getAllIndicesService = async (query) => {
   const filters = await buildFilters(query, false);
   const { pageNumber, limitNumber, skip } = calculatePagination(query.page, query.limit);
 
@@ -125,9 +129,8 @@ export const getAllIndicesService = async (query) => {
   };
 };
 
-export const getPublicIndicesService = async (query) => {
-  await ensureDefaultCategoriesService();
 
+export const getPublicIndicesService = async (query) => {
   const filters = await buildFilters(query, true);
   const { pageNumber, limitNumber, skip } = calculatePagination(query.page, query.limit);
 
@@ -149,9 +152,8 @@ export const getPublicIndicesService = async (query) => {
   };
 };
 
-export const getFeaturedIndicesService = async () => {
-  await ensureDefaultCategoriesService();
 
+export const getFeaturedIndicesService = async () => {
   const indices = await Index.find({ isFeatured: true, isActive: true })
     .populate('category', 'name slug')
     .sort({ lastUpdated: -1, createdAt: -1 })
@@ -160,6 +162,7 @@ export const getFeaturedIndicesService = async () => {
 
   return indices.map(mapIndexResponse);
 };
+
 
 export const getIndexBySymbolService = async ({ symbol }) => {
   const index = await Index.findOne({
@@ -176,9 +179,8 @@ export const getIndexBySymbolService = async ({ symbol }) => {
   return mapIndexResponse(index);
 };
 
-export const createIndexService = async (payload) => {
-  await ensureDefaultCategoriesService();
 
+export const createIndexService = async (payload) => {
   if (!payload.name?.trim()) {
     throw new ApiError(400, 'Index name is required');
   }
@@ -230,6 +232,7 @@ export const createIndexService = async (payload) => {
 
   return mapIndexResponse(populated);
 };
+
 
 export const updateIndexService = async ({ indexId, payload }) => {
   if (!mongoose.Types.ObjectId.isValid(indexId)) {
@@ -300,6 +303,7 @@ export const updateIndexService = async ({ indexId, payload }) => {
 
   return mapIndexResponse(populated);
 };
+
 
 export const deleteIndexService = async ({ indexId }) => {
   if (!mongoose.Types.ObjectId.isValid(indexId)) {
