@@ -61,6 +61,11 @@ const indexSchema = new mongoose.Schema(
       default: null,
       min: 0,
     },
+    minimumInvestment: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
     isFeatured: {
       type: Boolean,
       default: false,
@@ -117,6 +122,18 @@ indexSchema.pre('validate', function (next) {
 
   if (this.defaultDailyRate !== null && this.defaultDailyRate !== undefined) {
     this.defaultDailyRate = Number(this.defaultDailyRate);
+  }
+
+  if (this.minimumInvestment !== null && typeof this.minimumInvestment !== 'undefined') {
+    this.minimumInvestment = Number(this.minimumInvestment);
+
+    if (Number.isNaN(this.minimumInvestment)) {
+      return next(new Error('Minimum investment must be a valid number'));
+    }
+
+    if (this.minimumInvestment <= 0) {
+      return next(new Error('Minimum investment must be greater than 0'));
+    }
   }
 
   this.lastUpdated = new Date();

@@ -3,9 +3,7 @@ import Index from './index.model.js';
 import Category from '../category/category.model.js';
 import { ApiError } from '../../../shared/utils/apiError.js';
 
-
 const normalizeCategoryInput = (value = '') => value.trim().toLowerCase();
-
 
 const normalizeDefaultDailyRate = (value) => {
   if (value === '' || value === null || typeof value === 'undefined') {
@@ -25,6 +23,23 @@ const normalizeDefaultDailyRate = (value) => {
   return Number(numericValue.toFixed(2));
 };
 
+const normalizeMinimumInvestment = (value) => {
+  if (value === '' || value === null || typeof value === 'undefined') {
+    throw new ApiError(400, 'Minimum investment is required for this index');
+  }
+
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) {
+    throw new ApiError(400, 'Minimum investment must be a valid number');
+  }
+
+  if (numericValue <= 0) {
+    throw new ApiError(400, 'Minimum investment must be greater than 0');
+  }
+
+  return Number(numericValue.toFixed(2));
+};
 
 const findCategoryFromInput = async (categoryValue) => {
   if (!categoryValue || categoryValue === 'All' || categoryValue === 'All Indices') {
@@ -42,7 +57,6 @@ const findCategoryFromInput = async (categoryValue) => {
 
   return category;
 };
-
 
 const buildFilters = async (query = {}, publicOnly = false) => {
   const { category, featured, isFeatured, isActive, search } = query;
@@ -86,7 +100,6 @@ const buildFilters = async (query = {}, publicOnly = false) => {
   return filters;
 };
 
-
 const calculatePagination = (page = 1, limit = 20) => {
   const pageNumber = Math.max(Number(page) || 1, 1);
   const limitNumber = Math.max(Number(limit) || 20, 1);
@@ -94,18 +107,20 @@ const calculatePagination = (page = 1, limit = 20) => {
   return { pageNumber, limitNumber, skip };
 };
 
-
 const mapIndexResponse = (item) => ({
   ...item,
   defaultDailyRate:
     item.defaultDailyRate === null || typeof item.defaultDailyRate === 'undefined'
       ? null
       : Number(item.defaultDailyRate),
+  minimumInvestment:
+    item.minimumInvestment === null || typeof item.minimumInvestment === 'undefined'
+      ? null
+      : Number(item.minimumInvestment),
   categoryId: item.category?._id || item.category || null,
   categoryName: item.category?.name || '',
   categorySlug: item.category?.slug || '',
 });
-
 
 export const getAllIndicesService = async (query) => {
   const filters = await buildFilters(query, false);
@@ -129,7 +144,6 @@ export const getAllIndicesService = async (query) => {
   };
 };
 
-
 export const getPublicIndicesService = async (query) => {
   const filters = await buildFilters(query, true);
   const { pageNumber, limitNumber, skip } = calculatePagination(query.page, query.limit);
@@ -152,7 +166,6 @@ export const getPublicIndicesService = async (query) => {
   };
 };
 
-
 export const getFeaturedIndicesService = async () => {
   const indices = await Index.find({ isFeatured: true, isActive: true })
     .populate('category', 'name slug')
@@ -162,7 +175,6 @@ export const getFeaturedIndicesService = async () => {
 
   return indices.map(mapIndexResponse);
 };
-
 
 export const getIndexBySymbolService = async ({ symbol }) => {
   const index = await Index.findOne({
@@ -178,7 +190,6 @@ export const getIndexBySymbolService = async ({ symbol }) => {
 
   return mapIndexResponse(index);
 };
-
 
 export const createIndexService = async (payload) => {
   if (!payload.name?.trim()) {
@@ -224,6 +235,7 @@ export const createIndexService = async (payload) => {
     symbol: payload.symbol.trim().toUpperCase(),
     category: categoryId,
     defaultDailyRate: normalizeDefaultDailyRate(payload.defaultDailyRate),
+    minimumInvestment: normalizeMinimumInvestment(payload.minimumInvestment),
   });
 
   const populated = await Index.findById(index._id)
@@ -232,7 +244,6 @@ export const createIndexService = async (payload) => {
 
   return mapIndexResponse(populated);
 };
-
 
 export const updateIndexService = async ({ indexId, payload }) => {
   if (!mongoose.Types.ObjectId.isValid(indexId)) {
@@ -281,6 +292,10 @@ export const updateIndexService = async ({ indexId, payload }) => {
     nextPayload.defaultDailyRate = normalizeDefaultDailyRate(payload.defaultDailyRate);
   }
 
+  if (Object.prototype.hasOwnProperty.call(payload, 'minimumInvestment')) {
+    nextPayload.minimumInvestment = normalizeMinimumInvestment(payload.minimumInvestment);
+  }
+
   if (payload.category) {
     const objectIdRegex = /^[0-9a-fA-F]{24}$/;
     if (!objectIdRegex.test(String(payload.category))) {
@@ -303,7 +318,6 @@ export const updateIndexService = async ({ indexId, payload }) => {
 
   return mapIndexResponse(populated);
 };
-
 
 export const deleteIndexService = async ({ indexId }) => {
   if (!mongoose.Types.ObjectId.isValid(indexId)) {

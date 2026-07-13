@@ -6,7 +6,6 @@ import Transaction from '../../transaction/transaction.model.js';
 import InterestSlab from '../interest-slab/interestSlab.model.js';
 import { ApiError } from '../../../shared/utils/apiError.js';
 
-const MIN_INVESTMENT_AMOUNT = 5000;
 const MAX_INVESTMENT_AMOUNT = 500000;
 const DEFAULT_LOCK_PERIOD_DAYS = 30;
 
@@ -36,6 +35,16 @@ const getEndOfDayUtc = (date = new Date()) => {
     const utcDate = new Date(date);
     utcDate.setUTCHours(23, 59, 59, 999);
     return utcDate;
+};
+
+const getIndexMinimumInvestment = (indexDoc) => {
+    const minimumInvestment = Number(indexDoc?.minimumInvestment);
+
+    if (Number.isNaN(minimumInvestment) || minimumInvestment <= 0) {
+        throw new ApiError(400, 'This index does not have a minimum investment configured. Contact admin.');
+    }
+
+    return minimumInvestment;
 };
 
 const mapInvestmentResponse = (investment) => {
@@ -134,10 +143,10 @@ const createInvestmentTransaction = async ({
                 },
                 adminAction: adminId
                     ? {
-                          actionType: 'approved',
-                          actionBy: adminId,
-                          actionAt: new Date(),
-                      }
+                        actionType: 'approved',
+                        actionBy: adminId,
+                        actionAt: new Date(),
+                    }
                     : undefined,
             },
         ],
@@ -157,24 +166,25 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
 
     const amount = normalizeAmount(payload.amount);
 
-    if (amount < MIN_INVESTMENT_AMOUNT) {
-        throw new ApiError(400, `Minimum investment amount is ₹${MIN_INVESTMENT_AMOUNT}`);
+    const indexDoc = await Index.findOne({ _id: indexId, isActive: true })
+        .populate('category', 'name slug color icon')
+        .lean();
+
+    if (!indexDoc) {
+        throw new ApiError(404, 'Active index not found');
+    }
+
+    const minimumInvestment = getIndexMinimumInvestment(indexDoc);
+
+    if (amount < minimumInvestment) {
+        throw new ApiError(400, `Minimum investment amount for ${indexDoc.name} is ₹${minimumInvestment}`);
     }
 
     if (amount > MAX_INVESTMENT_AMOUNT) {
         throw new ApiError(400, `Maximum investment amount is ₹${MAX_INVESTMENT_AMOUNT}`);
     }
 
-    const [indexDoc, slab] = await Promise.all([
-        Index.findOne({ _id: indexId, isActive: true })
-            .populate('category', 'name slug color icon')
-            .lean(),
-        getMatchingInterestSlab(amount),
-    ]);
-
-    if (!indexDoc) {
-        throw new ApiError(404, 'Active index not found');
-    }
+    const slab = await getMatchingInterestSlab(amount);
 
     const hasCustomRate =
         payload.customDailyRate !== null &&
@@ -281,7 +291,7 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
         await session.commitTransaction();
 
         const createdInvestment = await Investment.findById(investment._id)
-            .populate('indexId', 'name symbol logoUrl currentValue')
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
             .populate('categoryId', 'name slug color icon')
             .lean({ virtuals: true });
 
@@ -312,7 +322,7 @@ export const getMyInvestmentOrdersService = async ({ userId, query = {} }) => {
 
     const [investments, total] = await Promise.all([
         Investment.find(filter)
-            .populate('indexId', 'name symbol logoUrl currentValue')
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
             .populate('categoryId', 'name slug color icon')
             .sort({ createdAt: -1 })
             .skip(skip)
@@ -342,7 +352,7 @@ export const getMyPortfolioService = async ({ userId, query = {} }) => {
     }
 
     const investments = await Investment.find(filter)
-        .populate('indexId', 'name symbol logoUrl currentValue')
+        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
         .populate('categoryId', 'name slug color icon')
         .sort({ createdAt: -1 })
         .lean({ virtuals: true });
@@ -400,7 +410,7 @@ export const getAllInvestmentOrdersAdminService = async ({ query = {} }) => {
     const [investments, total] = await Promise.all([
         Investment.find(filter)
             .populate('userId', 'fullName phoneNumber walletBalance')
-            .populate('indexId', 'name symbol logoUrl currentValue')
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
             .populate('categoryId', 'name slug color icon')
             .populate('approvedBy', 'username role')
             .populate('rejectedBy', 'username role')
@@ -432,7 +442,7 @@ export const getInvestmentByIdService = async ({ investmentId, userId = null, ad
 
     const investment = await Investment.findOne(filter)
         .populate('userId', 'fullName phoneNumber walletBalance')
-        .populate('indexId', 'name symbol logoUrl currentValue')
+        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
         .populate('categoryId', 'name slug color icon')
         .populate('slabId', 'title minAmount maxAmount dailyRate')
         .populate('approvedBy', 'username role')
@@ -482,7 +492,7 @@ export const overrideInvestmentRateAdminService = async ({
 
     const updatedInvestment = await Investment.findById(investment._id)
         .populate('userId', 'fullName phoneNumber walletBalance')
-        .populate('indexId', 'name symbol logoUrl currentValue')
+        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
         .populate('categoryId', 'name slug color icon')
         .lean({ virtuals: true });
 
@@ -496,7 +506,7 @@ export const approveInvestmentOrderAdminService = async ({ investmentId }) => {
 
     const investment = await Investment.findById(investmentId)
         .populate('userId', 'fullName phoneNumber walletBalance')
-        .populate('indexId', 'name symbol logoUrl currentValue')
+        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
         .populate('categoryId', 'name slug color icon')
         .lean({ virtuals: true });
 
@@ -599,7 +609,7 @@ export const cancelInvestmentService = async ({ investmentId, userId }) => {
 
         const cancelledInvestment = await Investment.findById(investment._id)
             .populate('userId', 'fullName phoneNumber walletBalance')
-            .populate('indexId', 'name symbol logoUrl currentValue')
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
             .populate('categoryId', 'name slug color icon')
             .lean({ virtuals: true });
 
@@ -737,20 +747,11 @@ export const resolveInvestmentPreviewService = async ({ userId, indexId, amount 
 
     const normalizedAmount = normalizeAmount(amount);
 
-    if (normalizedAmount < MIN_INVESTMENT_AMOUNT) {
-        throw new ApiError(400, `Minimum investment amount is ₹${MIN_INVESTMENT_AMOUNT}`);
-    }
-
-    if (normalizedAmount > MAX_INVESTMENT_AMOUNT) {
-        throw new ApiError(400, `Maximum investment amount is ₹${MAX_INVESTMENT_AMOUNT}`);
-    }
-
-    const [user, indexDoc, slab] = await Promise.all([
+    const [user, indexDoc] = await Promise.all([
         User.findById(userId).select('_id walletBalance isActive').lean(),
         Index.findOne({ _id: indexId, isActive: true })
             .populate('category', 'name slug color icon')
             .lean(),
-        getMatchingInterestSlab(normalizedAmount),
     ]);
 
     if (!user || !user.isActive) {
@@ -760,6 +761,18 @@ export const resolveInvestmentPreviewService = async ({ userId, indexId, amount 
     if (!indexDoc) {
         throw new ApiError(404, 'Active index not found');
     }
+
+    const minimumInvestment = getIndexMinimumInvestment(indexDoc);
+
+    if (normalizedAmount < minimumInvestment) {
+        throw new ApiError(400, `Minimum investment amount for ${indexDoc.name} is ₹${minimumInvestment}`);
+    }
+
+    if (normalizedAmount > MAX_INVESTMENT_AMOUNT) {
+        throw new ApiError(400, `Maximum investment amount is ₹${MAX_INVESTMENT_AMOUNT}`);
+    }
+
+    const slab = await getMatchingInterestSlab(normalizedAmount);
 
     const effectiveDailyRate = slab?.dailyRate ?? indexDoc.defaultDailyRate ?? null;
 
@@ -779,6 +792,8 @@ export const resolveInvestmentPreviewService = async ({ userId, indexId, amount 
         indexName: indexDoc.name,
         indexSymbol: indexDoc.symbol,
         currentValue: Number(indexDoc.currentValue || 0),
+        minimumInvestment,
+        maximumInvestment: MAX_INVESTMENT_AMOUNT,
         slabId: slab?._id || null,
         slabTitle: slab?.title || null,
         slabDailyRate: slab?.dailyRate ?? null,
