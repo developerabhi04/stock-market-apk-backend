@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 
 const INVESTMENT_STATUSES = ['pending', 'active', 'rejected', 'cancelled', 'completed'];
+const CANCELLED_BY = ['user', 'admin', null];
+const RATE_SOURCES = ['default', 'slab', 'custom', 'manual', 'admin_override', ''];
 
 const investmentSchema = new mongoose.Schema(
     {
@@ -37,6 +39,12 @@ const investmentSchema = new mongoose.Schema(
             min: 0,
         },
 
+        minimumInvestment: {
+            type: Number,
+            default: null,
+            min: 0,
+        },
+
         status: {
             type: String,
             enum: INVESTMENT_STATUSES,
@@ -46,7 +54,7 @@ const investmentSchema = new mongoose.Schema(
 
         lockPeriodDays: {
             type: Number,
-            default: 30,
+            required: true,
             min: 1,
         },
 
@@ -58,7 +66,7 @@ const investmentSchema = new mongoose.Schema(
 
         daysRemaining: {
             type: Number,
-            default: 30,
+            required: true,
             min: 0,
         },
 
@@ -152,6 +160,13 @@ const investmentSchema = new mongoose.Schema(
             min: 0,
         },
 
+        rateSource: {
+            type: String,
+            enum: RATE_SOURCES,
+            default: '',
+            trim: true,
+        },
+
         adminRemark: {
             type: String,
             trim: true,
@@ -178,7 +193,7 @@ const investmentSchema = new mongoose.Schema(
 
         cancelledBy: {
             type: String,
-            enum: ['user', 'admin', null],
+            enum: CANCELLED_BY,
             default: null,
         },
 
@@ -201,6 +216,21 @@ const investmentSchema = new mongoose.Schema(
             currentValue: {
                 type: Number,
                 default: 0,
+                min: 0,
+            },
+            minimumInvestment: {
+                type: Number,
+                default: null,
+                min: 0,
+            },
+            lockPeriodDays: {
+                type: Number,
+                default: null,
+                min: 1,
+            },
+            defaultDailyRate: {
+                type: Number,
+                default: null,
                 min: 0,
             },
         },
@@ -243,7 +273,7 @@ investmentSchema.index({ indexId: 1, status: 1 });
 investmentSchema.index({ approvedAt: 1, status: 1 });
 
 investmentSchema.virtual('progressPercent').get(function () {
-    const totalDays = Number(this.lockPeriodDays || 30);
+    const totalDays = Number(this.lockPeriodDays || 0);
     const completedDays = Number(this.daysCompleted || 0);
 
     if (totalDays <= 0) return 0;
@@ -259,13 +289,32 @@ investmentSchema.virtual('isActiveInvestment').get(function () {
     return this.status === 'active';
 });
 
+investmentSchema.virtual('isUnlocked').get(function () {
+    return this.status === 'active' && this.isLockCompleted === true;
+});
+
+investmentSchema.virtual('isLocked').get(function () {
+    return this.status === 'active' && this.isLockCompleted === false;
+});
+
 investmentSchema.pre('validate', function (next) {
     this.amount = Number(this.amount || 0);
-    this.lockPeriodDays = Number(this.lockPeriodDays || 30);
     this.daysCompleted = Number(this.daysCompleted || 0);
     this.totalInterestEarned = Number(this.totalInterestEarned || 0);
     this.currentValueSnapshot = Number(this.currentValueSnapshot || 0);
     this.dailyInterestAmount = Number(this.dailyInterestAmount || 0);
+
+    if (this.minimumInvestment !== null && typeof this.minimumInvestment !== 'undefined') {
+        this.minimumInvestment = Number(this.minimumInvestment);
+    }
+
+    if (this.lockPeriodDays !== null && typeof this.lockPeriodDays !== 'undefined') {
+        this.lockPeriodDays = Number(this.lockPeriodDays);
+    }
+
+    if (this.daysRemaining !== null && typeof this.daysRemaining !== 'undefined') {
+        this.daysRemaining = Number(this.daysRemaining);
+    }
 
     if (this.slabDailyRate !== null && typeof this.slabDailyRate !== 'undefined') {
         this.slabDailyRate = Number(this.slabDailyRate);
@@ -279,24 +328,48 @@ investmentSchema.pre('validate', function (next) {
         this.effectiveDailyRate = Number(this.effectiveDailyRate);
     }
 
+    if (this.indexSnapshot?.minimumInvestment !== null && typeof this.indexSnapshot?.minimumInvestment !== 'undefined') {
+        this.indexSnapshot.minimumInvestment = Number(this.indexSnapshot.minimumInvestment);
+    }
+
+    if (this.indexSnapshot?.lockPeriodDays !== null && typeof this.indexSnapshot?.lockPeriodDays !== 'undefined') {
+        this.indexSnapshot.lockPeriodDays = Number(this.indexSnapshot.lockPeriodDays);
+    }
+
+    if (this.indexSnapshot?.defaultDailyRate !== null && typeof this.indexSnapshot?.defaultDailyRate !== 'undefined') {
+        this.indexSnapshot.defaultDailyRate = Number(this.indexSnapshot.defaultDailyRate);
+    }
+
     if (Number.isNaN(this.amount)) {
         return next(new Error('Investment amount must be a valid number'));
     }
 
-    if (Number.isNaN(this.lockPeriodDays)) {
-        return next(new Error('Lock period days must be a valid number'));
+    if (this.minimumInvestment !== null && Number.isNaN(this.minimumInvestment)) {
+        return next(new Error('Minimum investment must be a valid number'));
     }
 
     if (Number.isNaN(this.daysCompleted)) {
         return next(new Error('Days completed must be a valid number'));
     }
 
+    if (Number.isNaN(this.totalInterestEarned)) {
+        return next(new Error('Total interest earned must be a valid number'));
+    }
+
+    if (Number.isNaN(this.currentValueSnapshot)) {
+        return next(new Error('Current value snapshot must be a valid number'));
+    }
+
     if (Number.isNaN(this.dailyInterestAmount)) {
         return next(new Error('Daily interest amount must be a valid number'));
     }
 
-    if (this.lockPeriodDays < 1) {
-        return next(new Error('Lock period days must be at least 1'));
+    if (typeof this.lockPeriodDays === 'undefined' || this.lockPeriodDays === null || Number.isNaN(this.lockPeriodDays)) {
+        return next(new Error('Lock period days is required'));
+    }
+
+    if (!Number.isInteger(this.lockPeriodDays) || this.lockPeriodDays < 1) {
+        return next(new Error('Lock period days must be an integer of at least 1'));
     }
 
     if (this.daysCompleted < 0) {
@@ -310,11 +383,15 @@ investmentSchema.pre('validate', function (next) {
     this.daysRemaining = Math.max(this.lockPeriodDays - this.daysCompleted, 0);
     this.isLockCompleted = this.daysCompleted >= this.lockPeriodDays;
 
+    if (this.minimumInvestment !== null && this.amount > 0 && this.amount < this.minimumInvestment) {
+        return next(new Error(`Investment amount must be at least ${this.minimumInvestment}`));
+    }
+
     if (this.status === 'active' && !this.approvedAt) {
         this.approvedAt = new Date();
     }
 
-    if (this.status === 'active' && this.approvedAt && !this.lockEndsAt) {
+    if (this.status === 'active' && this.approvedAt) {
         const lockEndsAt = new Date(this.approvedAt);
         lockEndsAt.setDate(lockEndsAt.getDate() + this.lockPeriodDays);
         this.lockEndsAt = lockEndsAt;
@@ -341,7 +418,7 @@ investmentSchema.pre('validate', function (next) {
 
     if (
         (this.status === 'active' || this.status === 'completed' || this.status === 'cancelled') &&
-        (this.dailyInterestAmount < 0 || typeof this.dailyInterestAmount === 'undefined')
+        (typeof this.dailyInterestAmount === 'undefined' || this.dailyInterestAmount < 0)
     ) {
         return next(new Error('Daily interest amount must be set for active investments'));
     }

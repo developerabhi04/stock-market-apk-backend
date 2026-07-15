@@ -123,7 +123,7 @@ export const getInvestmentByIdAdmin = asyncHandler(async (req, res) => {
 });
 
 export const approveInvestmentOrder = asyncHandler(async (req, res) => {
-    const adminId = req.admin?.adminId;
+    const adminId = req.admin?.adminId || req.admin?._id || req.admin?.id;
 
     const investment = await approveInvestmentOrderAdminService({
         investmentId: req.params.investmentId,
@@ -137,7 +137,7 @@ export const approveInvestmentOrder = asyncHandler(async (req, res) => {
 });
 
 export const rejectInvestmentOrder = asyncHandler(async (req, res) => {
-    const adminId = req.admin?.adminId;
+    const adminId = req.admin?.adminId || req.admin?._id || req.admin?.id;
 
     const investment = await rejectInvestmentOrderAdminService({
         investmentId: req.params.investmentId,

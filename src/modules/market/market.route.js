@@ -17,4 +17,5 @@ router.use('/stocks', stockRoutes);
 router.use('/interest-slabs', interestSlabRoutes);
 router.use('/investments', investmentRoutes);
 
+
 export default router;

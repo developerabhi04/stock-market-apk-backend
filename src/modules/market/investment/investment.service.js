@@ -6,9 +6,6 @@ import Transaction from '../../transaction/transaction.model.js';
 import InterestSlab from '../interest-slab/interestSlab.model.js';
 import { ApiError } from '../../../shared/utils/apiError.js';
 
-const MAX_INVESTMENT_AMOUNT = 500000;
-const DEFAULT_LOCK_PERIOD_DAYS = 30;
-
 const normalizeAmount = (value) => {
     const numericValue = Number(value);
 
@@ -17,6 +14,30 @@ const normalizeAmount = (value) => {
     }
 
     return Number(numericValue.toFixed(2));
+};
+
+const normalizeRate = (value, fieldName = 'Rate') => {
+    const numericValue = Number(value);
+
+    if (Number.isNaN(numericValue)) {
+        throw new ApiError(400, `${fieldName} must be a valid number`);
+    }
+
+    if (numericValue < 0) {
+        throw new ApiError(400, `${fieldName} cannot be negative`);
+    }
+
+    return Number(numericValue.toFixed(2));
+};
+
+const normalizePositiveInteger = (value, fieldName = 'Value') => {
+    const numericValue = Number(value);
+
+    if (Number.isNaN(numericValue) || !Number.isInteger(numericValue) || numericValue < 1) {
+        throw new ApiError(400, `${fieldName} must be an integer greater than 0`);
+    }
+
+    return numericValue;
 };
 
 const generateOrderNumber = () => {
@@ -44,7 +65,35 @@ const getIndexMinimumInvestment = (indexDoc) => {
         throw new ApiError(400, 'This index does not have a minimum investment configured. Contact admin.');
     }
 
-    return minimumInvestment;
+    return Number(minimumInvestment.toFixed(2));
+};
+
+const getIndexLockPeriodDays = (indexDoc) => {
+    const lockPeriodDays = Number(indexDoc?.lockPeriodDays);
+
+    if (Number.isNaN(lockPeriodDays) || !Number.isInteger(lockPeriodDays) || lockPeriodDays < 1) {
+        throw new ApiError(400, 'This index does not have a valid lock period configured. Contact admin.');
+    }
+
+    return lockPeriodDays;
+};
+
+const getIndexDefaultDailyRate = (indexDoc) => {
+    if (
+        indexDoc?.defaultDailyRate === null ||
+        typeof indexDoc?.defaultDailyRate === 'undefined' ||
+        indexDoc?.defaultDailyRate === ''
+    ) {
+        return null;
+    }
+
+    const defaultDailyRate = Number(indexDoc.defaultDailyRate);
+
+    if (Number.isNaN(defaultDailyRate) || defaultDailyRate < 0) {
+        throw new ApiError(400, 'This index has an invalid default daily rate configured.');
+    }
+
+    return Number(defaultDailyRate.toFixed(2));
 };
 
 const mapInvestmentResponse = (investment) => {
@@ -57,7 +106,12 @@ const mapInvestmentResponse = (investment) => {
     const dailyInterestAmount = Number(investment.dailyInterestAmount || 0);
     const daysCompleted = Number(investment.daysCompleted || 0);
     const daysRemaining = Number(investment.daysRemaining || 0);
-    const lockPeriodDays = Number(investment.lockPeriodDays || DEFAULT_LOCK_PERIOD_DAYS);
+    const lockPeriodDays = Number(investment.lockPeriodDays || 0);
+    const minimumInvestment =
+        investment.minimumInvestment === null || typeof investment.minimumInvestment === 'undefined'
+            ? investment.indexSnapshot?.minimumInvestment ?? investment.indexId?.minimumInvestment ?? null
+            : Number(investment.minimumInvestment);
+    const rateSource = investment.rateSource || '';
     const progressPercent =
         lockPeriodDays > 0
             ? Math.min(Number(((daysCompleted / lockPeriodDays) * 100).toFixed(2)), 100)
@@ -67,15 +121,19 @@ const mapInvestmentResponse = (investment) => {
         ...investment,
         id: investment._id,
         amount,
+        minimumInvestment: minimumInvestment === null ? null : Number(minimumInvestment),
         totalInterestEarned,
         effectiveDailyRate,
         dailyInterestAmount,
         daysCompleted,
         daysRemaining,
         lockPeriodDays,
+        rateSource,
         progressPercent,
         canCancel: investment.status === 'active' && investment.isLockCompleted === true,
         isActiveInvestment: investment.status === 'active',
+        isLocked: investment.status === 'active' && investment.isLockCompleted !== true,
+        isUnlocked: investment.status === 'active' && investment.isLockCompleted === true,
     };
 };
 
@@ -99,6 +157,18 @@ const buildInvestmentSnapshot = (indexDoc) => ({
         symbol: indexDoc.symbol || '',
         logoUrl: indexDoc.logoUrl || '',
         currentValue: Number(indexDoc.currentValue || 0),
+        minimumInvestment:
+            indexDoc.minimumInvestment === null || typeof indexDoc.minimumInvestment === 'undefined'
+                ? null
+                : Number(indexDoc.minimumInvestment),
+        lockPeriodDays:
+            indexDoc.lockPeriodDays === null || typeof indexDoc.lockPeriodDays === 'undefined'
+                ? null
+                : Number(indexDoc.lockPeriodDays),
+        defaultDailyRate:
+            indexDoc.defaultDailyRate === null || typeof indexDoc.defaultDailyRate === 'undefined'
+                ? null
+                : Number(indexDoc.defaultDailyRate),
     },
     categorySnapshot: {
         name: indexDoc.category?.name || '',
@@ -140,6 +210,11 @@ const createInvestmentTransaction = async ({
                     price: investment.indexSnapshot?.currentValue || 0,
                     dailyRate: investment.effectiveDailyRate || 0,
                     dailyInterestAmount: investment.dailyInterestAmount || 0,
+                    lockPeriodDays: investment.lockPeriodDays || 0,
+                    minimumInvestment:
+                        investment.minimumInvestment ??
+                        investment.indexSnapshot?.minimumInvestment ??
+                        null,
                 },
                 adminAction: adminId
                     ? {
@@ -152,6 +227,44 @@ const createInvestmentTransaction = async ({
         ],
         { session }
     );
+};
+
+const resolveRateForInvestment = ({ indexDoc, slab, customDailyRate }) => {
+    const hasCustomRate =
+        customDailyRate !== null &&
+        typeof customDailyRate !== 'undefined' &&
+        customDailyRate !== '';
+
+    if (hasCustomRate) {
+        return {
+            customDailyRate: normalizeRate(customDailyRate, 'Custom daily rate'),
+            slabDailyRate: slab?.dailyRate ?? null,
+            effectiveDailyRate: normalizeRate(customDailyRate, 'Custom daily rate'),
+            rateSource: 'custom',
+        };
+    }
+
+    if (slab?.dailyRate !== null && typeof slab?.dailyRate !== 'undefined') {
+        return {
+            customDailyRate: null,
+            slabDailyRate: normalizeRate(slab.dailyRate, 'Slab daily rate'),
+            effectiveDailyRate: normalizeRate(slab.dailyRate, 'Slab daily rate'),
+            rateSource: 'slab',
+        };
+    }
+
+    const defaultDailyRate = getIndexDefaultDailyRate(indexDoc);
+
+    if (defaultDailyRate !== null) {
+        return {
+            customDailyRate: null,
+            slabDailyRate: null,
+            effectiveDailyRate: defaultDailyRate,
+            rateSource: 'default',
+        };
+    }
+
+    throw new ApiError(400, 'No daily rate available for this investment amount');
 };
 
 export const createInvestmentOrderService = async ({ userId, payload }) => {
@@ -175,36 +288,22 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
     }
 
     const minimumInvestment = getIndexMinimumInvestment(indexDoc);
+    const lockPeriodDays = getIndexLockPeriodDays(indexDoc);
+    const indexDefaultDailyRate = getIndexDefaultDailyRate(indexDoc);
 
     if (amount < minimumInvestment) {
         throw new ApiError(400, `Minimum investment amount for ${indexDoc.name} is ₹${minimumInvestment}`);
     }
 
-    if (amount > MAX_INVESTMENT_AMOUNT) {
-        throw new ApiError(400, `Maximum investment amount is ₹${MAX_INVESTMENT_AMOUNT}`);
-    }
-
     const slab = await getMatchingInterestSlab(amount);
 
-    const hasCustomRate =
-        payload.customDailyRate !== null &&
-        typeof payload.customDailyRate !== 'undefined' &&
-        payload.customDailyRate !== '';
+    const rateConfig = resolveRateForInvestment({
+        indexDoc,
+        slab,
+        customDailyRate: payload.customDailyRate,
+    });
 
-    const effectiveDailyRate = hasCustomRate
-        ? Number(payload.customDailyRate)
-        : slab?.dailyRate ?? indexDoc.defaultDailyRate ?? null;
-
-    if (effectiveDailyRate === null || typeof effectiveDailyRate === 'undefined' || Number.isNaN(Number(effectiveDailyRate))) {
-        throw new ApiError(400, 'No daily rate available for this investment amount');
-    }
-
-    if (Number(effectiveDailyRate) < 0) {
-        throw new ApiError(400, 'Daily rate cannot be negative');
-    }
-
-    const normalizedEffectiveDailyRate = Number(Number(effectiveDailyRate).toFixed(2));
-    const dailyInterestAmount = Number(((amount * normalizedEffectiveDailyRate) / 100).toFixed(2));
+    const dailyInterestAmount = Number(((amount * rateConfig.effectiveDailyRate) / 100).toFixed(2));
 
     const session = await mongoose.startSession();
     session.startTransaction({
@@ -228,7 +327,7 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
 
         const approvedAt = new Date();
         const lockEndsAt = new Date(approvedAt);
-        lockEndsAt.setDate(lockEndsAt.getDate() + DEFAULT_LOCK_PERIOD_DAYS);
+        lockEndsAt.setDate(lockEndsAt.getDate() + lockPeriodDays);
 
         const balanceBefore = Number(user.walletBalance);
         user.walletBalance = Number((Number(user.walletBalance) - amount).toFixed(2));
@@ -244,10 +343,11 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
                     categoryId: indexDoc.category?._id || null,
                     orderNumber: generateOrderNumber(),
                     amount,
+                    minimumInvestment,
                     status: 'active',
-                    lockPeriodDays: DEFAULT_LOCK_PERIOD_DAYS,
+                    lockPeriodDays,
                     daysCompleted: 0,
-                    daysRemaining: DEFAULT_LOCK_PERIOD_DAYS,
+                    daysRemaining: lockPeriodDays,
                     isLockCompleted: false,
                     orderPlacedAt: approvedAt,
                     approvedAt,
@@ -255,15 +355,19 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
                     lockEndsAt,
                     currentValueSnapshot: Number(indexDoc.currentValue || 0),
                     slabId: slab?._id || null,
-                    slabDailyRate: slab?.dailyRate ?? null,
-                    customDailyRate: hasCustomRate
-                        ? Number(Number(payload.customDailyRate).toFixed(2))
-                        : null,
-                    effectiveDailyRate: normalizedEffectiveDailyRate,
+                    slabDailyRate: rateConfig.slabDailyRate,
+                    customDailyRate: rateConfig.customDailyRate,
+                    effectiveDailyRate: rateConfig.effectiveDailyRate,
                     dailyInterestAmount,
+                    rateSource: rateConfig.rateSource,
                     adminRemark: '',
                     rejectionReason: '',
-                    ...buildInvestmentSnapshot(indexDoc),
+                    ...buildInvestmentSnapshot({
+                        ...indexDoc,
+                        minimumInvestment,
+                        lockPeriodDays,
+                        defaultDailyRate: indexDefaultDailyRate,
+                    }),
                 },
             ],
             { session }
@@ -285,13 +389,16 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
                 investmentId: investment._id,
                 action: 'investment_created',
                 executionType: 'instant_buy',
+                minimumInvestment,
+                lockPeriodDays,
+                rateSource: rateConfig.rateSource,
             },
         });
 
         await session.commitTransaction();
 
         const createdInvestment = await Investment.findById(investment._id)
-            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
             .populate('categoryId', 'name slug color icon')
             .lean({ virtuals: true });
 
@@ -300,7 +407,7 @@ export const createInvestmentOrderService = async ({ userId, payload }) => {
         await session.abortTransaction();
         throw error;
     } finally {
-        session.endSession();
+        await session.endSession();
     }
 };
 
@@ -322,7 +429,7 @@ export const getMyInvestmentOrdersService = async ({ userId, query = {} }) => {
 
     const [investments, total] = await Promise.all([
         Investment.find(filter)
-            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
             .populate('categoryId', 'name slug color icon')
             .sort({ createdAt: -1 })
             .skip(skip)
@@ -352,7 +459,7 @@ export const getMyPortfolioService = async ({ userId, query = {} }) => {
     }
 
     const investments = await Investment.find(filter)
-        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
+        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
         .populate('categoryId', 'name slug color icon')
         .sort({ createdAt: -1 })
         .lean({ virtuals: true });
@@ -410,7 +517,7 @@ export const getAllInvestmentOrdersAdminService = async ({ query = {} }) => {
     const [investments, total] = await Promise.all([
         Investment.find(filter)
             .populate('userId', 'fullName phoneNumber walletBalance')
-            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
             .populate('categoryId', 'name slug color icon')
             .populate('approvedBy', 'username role')
             .populate('rejectedBy', 'username role')
@@ -442,7 +549,7 @@ export const getInvestmentByIdService = async ({ investmentId, userId = null, ad
 
     const investment = await Investment.findOne(filter)
         .populate('userId', 'fullName phoneNumber walletBalance')
-        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
+        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
         .populate('categoryId', 'name slug color icon')
         .populate('slabId', 'title minAmount maxAmount dailyRate')
         .populate('approvedBy', 'username role')
@@ -465,11 +572,7 @@ export const overrideInvestmentRateAdminService = async ({
         throw new ApiError(400, 'Invalid investment id');
     }
 
-    const normalizedCustomDailyRate = Number(customDailyRate);
-
-    if (Number.isNaN(normalizedCustomDailyRate) || normalizedCustomDailyRate < 0) {
-        throw new ApiError(400, 'Custom daily rate must be a valid non-negative number');
-    }
+    const normalizedCustomDailyRate = normalizeRate(customDailyRate, 'Custom daily rate');
 
     const investment = await Investment.findById(investmentId);
 
@@ -481,32 +584,33 @@ export const overrideInvestmentRateAdminService = async ({
         throw new ApiError(400, 'Rate override is allowed only for active investments');
     }
 
-    investment.customDailyRate = Number(normalizedCustomDailyRate.toFixed(2));
-    investment.effectiveDailyRate = Number(normalizedCustomDailyRate.toFixed(2));
+    investment.customDailyRate = normalizedCustomDailyRate;
+    investment.effectiveDailyRate = normalizedCustomDailyRate;
     investment.dailyInterestAmount = Number(
         ((Number(investment.amount) * Number(investment.effectiveDailyRate)) / 100).toFixed(2)
     );
+    investment.rateSource = 'admin_override';
     investment.adminRemark = adminRemark?.trim() || investment.adminRemark || '';
 
     await investment.save();
 
     const updatedInvestment = await Investment.findById(investment._id)
         .populate('userId', 'fullName phoneNumber walletBalance')
-        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
+        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
         .populate('categoryId', 'name slug color icon')
         .lean({ virtuals: true });
 
     return mapInvestmentResponse(updatedInvestment);
 };
 
-export const approveInvestmentOrderAdminService = async ({ investmentId }) => {
+export const approveInvestmentOrderAdminService = async ({ investmentId, adminId, adminRemark = '' }) => {
     if (!mongoose.Types.ObjectId.isValid(investmentId)) {
         throw new ApiError(400, 'Invalid investment id');
     }
 
     const investment = await Investment.findById(investmentId)
         .populate('userId', 'fullName phoneNumber walletBalance')
-        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
+        .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
         .populate('categoryId', 'name slug color icon')
         .lean({ virtuals: true });
 
@@ -518,7 +622,11 @@ export const approveInvestmentOrderAdminService = async ({ investmentId }) => {
         throw new ApiError(400, 'This investment is not awaiting approval');
     }
 
-    return mapInvestmentResponse(investment);
+    return {
+        ...mapInvestmentResponse(investment),
+        adminRemark: adminRemark?.trim?.() || investment.adminRemark || '',
+        approvedBy: adminId || investment.approvedBy || null,
+    };
 };
 
 export const rejectInvestmentOrderAdminService = async ({ investmentId }) => {
@@ -566,8 +674,10 @@ export const cancelInvestmentService = async ({ investmentId, userId }) => {
             throw new ApiError(404, 'Active investment not found');
         }
 
+        const lockPeriodDays = Number(investment.lockPeriodDays);
+
         if (!investment.isLockCompleted) {
-            throw new ApiError(400, 'Investment is still locked. Cancel is allowed after 30 days');
+            throw new ApiError(400, `Investment is still locked. Cancel is allowed after ${lockPeriodDays} days`);
         }
 
         const user = await User.findById(userId).session(session);
@@ -602,6 +712,7 @@ export const cancelInvestmentService = async ({ investmentId, userId }) => {
             metadata: {
                 investmentId: investment._id,
                 action: 'investment_cancelled',
+                lockPeriodDays,
             },
         });
 
@@ -609,7 +720,7 @@ export const cancelInvestmentService = async ({ investmentId, userId }) => {
 
         const cancelledInvestment = await Investment.findById(investment._id)
             .populate('userId', 'fullName phoneNumber walletBalance')
-            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment')
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
             .populate('categoryId', 'name slug color icon')
             .lean({ virtuals: true });
 
@@ -618,7 +729,7 @@ export const cancelInvestmentService = async ({ investmentId, userId }) => {
         await session.abortTransaction();
         throw error;
     } finally {
-        session.endSession();
+        await session.endSession();
     }
 };
 
@@ -661,6 +772,8 @@ export const creditDailyInterestService = async ({ investmentId, creditDate = ne
             throw new ApiError(404, 'User not found');
         }
 
+        const lockPeriodDays = normalizePositiveInteger(investment.lockPeriodDays, 'Lock period days');
+
         const balanceBefore = Number(user.walletBalance);
         user.walletBalance = Number(
             (Number(user.walletBalance) + Number(investment.dailyInterestAmount)).toFixed(2)
@@ -675,16 +788,13 @@ export const creditDailyInterestService = async ({ investmentId, creditDate = ne
         investment.daysCompleted = Number(investment.daysCompleted || 0) + 1;
         investment.lastInterestCreditedAt = new Date(creditDate);
 
-        if (investment.daysCompleted >= Number(investment.lockPeriodDays || DEFAULT_LOCK_PERIOD_DAYS)) {
-            investment.daysCompleted = Number(investment.lockPeriodDays || DEFAULT_LOCK_PERIOD_DAYS);
+        if (investment.daysCompleted >= lockPeriodDays) {
+            investment.daysCompleted = lockPeriodDays;
             investment.isLockCompleted = true;
             investment.daysRemaining = 0;
             investment.completedAt = investment.completedAt || new Date();
         } else {
-            investment.daysRemaining = Math.max(
-                Number(investment.lockPeriodDays || DEFAULT_LOCK_PERIOD_DAYS) - Number(investment.daysCompleted),
-                0
-            );
+            investment.daysRemaining = Math.max(lockPeriodDays - Number(investment.daysCompleted), 0);
         }
 
         await investment.save({ session });
@@ -704,6 +814,8 @@ export const creditDailyInterestService = async ({ investmentId, creditDate = ne
                 action: 'daily_interest_credit',
                 creditDate: new Date(creditDate),
                 daysCompleted: investment.daysCompleted,
+                daysRemaining: investment.daysRemaining,
+                lockPeriodDays,
             },
         });
 
@@ -715,12 +827,13 @@ export const creditDailyInterestService = async ({ investmentId, creditDate = ne
             daysCompleted: Number(investment.daysCompleted),
             daysRemaining: Number(investment.daysRemaining),
             isLockCompleted: investment.isLockCompleted,
+            lockPeriodDays,
         };
     } catch (error) {
         await session.abortTransaction();
         throw error;
     } finally {
-        session.endSession();
+        await session.endSession();
     }
 };
 
@@ -729,7 +842,7 @@ export const getActiveInvestmentsForInterestCreditService = async () => {
         status: 'active',
     })
         .select(
-            '_id userId amount status dailyInterestAmount daysCompleted daysRemaining lockPeriodDays isLockCompleted lastInterestCreditedAt totalInterestEarned indexId indexSnapshot effectiveDailyRate'
+            '_id userId amount minimumInvestment status dailyInterestAmount daysCompleted daysRemaining lockPeriodDays isLockCompleted lastInterestCreditedAt totalInterestEarned indexId indexSnapshot effectiveDailyRate rateSource'
         )
         .lean();
 
@@ -763,46 +876,64 @@ export const resolveInvestmentPreviewService = async ({ userId, indexId, amount 
     }
 
     const minimumInvestment = getIndexMinimumInvestment(indexDoc);
+    const lockPeriodDays = getIndexLockPeriodDays(indexDoc);
+    const defaultDailyRate = getIndexDefaultDailyRate(indexDoc);
 
     if (normalizedAmount < minimumInvestment) {
         throw new ApiError(400, `Minimum investment amount for ${indexDoc.name} is ₹${minimumInvestment}`);
     }
 
-    if (normalizedAmount > MAX_INVESTMENT_AMOUNT) {
-        throw new ApiError(400, `Maximum investment amount is ₹${MAX_INVESTMENT_AMOUNT}`);
-    }
-
     const slab = await getMatchingInterestSlab(normalizedAmount);
 
-    const effectiveDailyRate = slab?.dailyRate ?? indexDoc.defaultDailyRate ?? null;
-
-    if (effectiveDailyRate === null || typeof effectiveDailyRate === 'undefined') {
-        throw new ApiError(400, 'No daily rate available for this investment amount');
-    }
+    const rateConfig = resolveRateForInvestment({
+        indexDoc,
+        slab,
+        customDailyRate: null,
+    });
 
     const dailyInterestAmount = Number(
-        ((Number(normalizedAmount) * Number(effectiveDailyRate)) / 100).toFixed(2)
+        ((Number(normalizedAmount) * Number(rateConfig.effectiveDailyRate)) / 100).toFixed(2)
     );
 
     return {
         amount: normalizedAmount,
         walletBalance: Number(user.walletBalance || 0),
         hasSufficientBalance: Number(user.walletBalance || 0) >= normalizedAmount,
+        totalPayable: normalizedAmount,
         indexId: indexDoc._id,
         indexName: indexDoc.name,
         indexSymbol: indexDoc.symbol,
         currentValue: Number(indexDoc.currentValue || 0),
         minimumInvestment,
-        maximumInvestment: MAX_INVESTMENT_AMOUNT,
         slabId: slab?._id || null,
         slabTitle: slab?.title || null,
         slabDailyRate: slab?.dailyRate ?? null,
-        defaultDailyRate: indexDoc.defaultDailyRate ?? null,
-        effectiveDailyRate: Number(Number(effectiveDailyRate).toFixed(2)),
+        defaultDailyRate,
+        effectiveDailyRate: Number(Number(rateConfig.effectiveDailyRate).toFixed(2)),
+        rateSource: rateConfig.rateSource,
         dailyInterestAmount,
-        lockPeriodDays: DEFAULT_LOCK_PERIOD_DAYS,
+        lockPeriodDays,
+        minAmount: minimumInvestment,
         totalEstimatedInterest: Number(
-            (dailyInterestAmount * Number(DEFAULT_LOCK_PERIOD_DAYS)).toFixed(2)
+            (dailyInterestAmount * Number(lockPeriodDays)).toFixed(2)
         ),
+        total30DaysEstimate: Number(
+            (dailyInterestAmount * Number(lockPeriodDays)).toFixed(2)
+        ),
+        indexSnapshot: {
+            name: indexDoc.name || '',
+            symbol: indexDoc.symbol || '',
+            logoUrl: indexDoc.logoUrl || '',
+            currentValue: Number(indexDoc.currentValue || 0),
+            minimumInvestment,
+            lockPeriodDays,
+            defaultDailyRate,
+        },
+        categorySnapshot: {
+            name: indexDoc.category?.name || '',
+            slug: indexDoc.category?.slug || '',
+            color: indexDoc.category?.color || '',
+            icon: indexDoc.category?.icon || '',
+        },
     };
 };

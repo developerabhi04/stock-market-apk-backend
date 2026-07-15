@@ -8,6 +8,7 @@ import {
 const router = express.Router();
 
 router.get('/', getAllIndices);
+
 router.get('/featured', getFeaturedIndices);
 router.get('/:symbol', getIndexBySymbol);
 

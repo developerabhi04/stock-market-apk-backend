@@ -3,9 +3,57 @@ import Index from './index.model.js';
 import Category from '../category/category.model.js';
 import { ApiError } from '../../../shared/utils/apiError.js';
 
-const normalizeCategoryInput = (value = '') => value.trim().toLowerCase();
+const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 
-const normalizeDefaultDailyRate = (value) => {
+const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeCategoryInput = (value = '') => String(value).trim().toLowerCase();
+
+const normalizeString = (value, fieldName) => {
+  if (value === null || typeof value === 'undefined') {
+    return '';
+  }
+
+  const normalized = String(value).trim();
+
+  if (!normalized) {
+    throw new ApiError(400, `${fieldName} is required`);
+  }
+
+  return normalized;
+};
+
+const normalizeOptionalString = (value) => {
+  if (value === null || typeof value === 'undefined') {
+    return '';
+  }
+
+  return String(value).trim();
+};
+
+const normalizeRequiredNumber = (value, fieldName, { min = 0, integer = false } = {}) => {
+  if (value === '' || value === null || typeof value === 'undefined') {
+    throw new ApiError(400, `${fieldName} is required`);
+  }
+
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) {
+    throw new ApiError(400, `${fieldName} must be a valid number`);
+  }
+
+  if (numericValue < min) {
+    throw new ApiError(400, `${fieldName} must be at least ${min}`);
+  }
+
+  if (integer && !Number.isInteger(numericValue)) {
+    throw new ApiError(400, `${fieldName} must be a whole number`);
+  }
+
+  return integer ? numericValue : Number(numericValue.toFixed(2));
+};
+
+const normalizeOptionalNumber = (value, fieldName, { min = 0 } = {}) => {
   if (value === '' || value === null || typeof value === 'undefined') {
     return null;
   }
@@ -13,29 +61,41 @@ const normalizeDefaultDailyRate = (value) => {
   const numericValue = Number(value);
 
   if (Number.isNaN(numericValue)) {
-    throw new ApiError(400, 'Default daily rate must be a valid number');
+    throw new ApiError(400, `${fieldName} must be a valid number`);
   }
 
-  if (numericValue < 0) {
-    throw new ApiError(400, 'Default daily rate cannot be negative');
+  if (numericValue < min) {
+    throw new ApiError(400, `${fieldName} cannot be less than ${min}`);
   }
 
   return Number(numericValue.toFixed(2));
 };
 
+const normalizeDefaultDailyRate = (value) => {
+  return normalizeOptionalNumber(value, 'Default daily rate', { min: 0 });
+};
+
 const normalizeMinimumInvestment = (value) => {
+  return normalizeRequiredNumber(value, 'Minimum investment', { min: 0.01 });
+};
+
+const normalizeLockPeriodDays = (value) => {
+  return normalizeRequiredNumber(value, 'Lock period days', { min: 1, integer: true });
+};
+
+const normalizeNonNegativeNumber = (value, fieldName) => {
   if (value === '' || value === null || typeof value === 'undefined') {
-    throw new ApiError(400, 'Minimum investment is required for this index');
+    return 0;
   }
 
   const numericValue = Number(value);
 
   if (Number.isNaN(numericValue)) {
-    throw new ApiError(400, 'Minimum investment must be a valid number');
+    throw new ApiError(400, `${fieldName} must be a valid number`);
   }
 
-  if (numericValue <= 0) {
-    throw new ApiError(400, 'Minimum investment must be greater than 0');
+  if (numericValue < 0) {
+    throw new ApiError(400, `${fieldName} cannot be negative`);
   }
 
   return Number(numericValue.toFixed(2));
@@ -47,15 +107,41 @@ const findCategoryFromInput = async (categoryValue) => {
   }
 
   const normalized = normalizeCategoryInput(categoryValue);
+  const safeRegex = new RegExp(`^${escapeRegex(String(categoryValue).trim())}$`, 'i');
 
   const category = await Category.findOne({
     $or: [
       { slug: normalized },
-      { name: new RegExp(`^${categoryValue.trim()}$`, 'i') },
+      { name: safeRegex },
     ],
   });
 
   return category;
+};
+
+const resolveCategoryId = async (categoryValue, required = true) => {
+  if (!categoryValue) {
+    if (required) {
+      throw new ApiError(400, 'Category is required');
+    }
+    return undefined;
+  }
+
+  if (objectIdRegex.test(String(categoryValue))) {
+    const exists = await Category.findById(categoryValue).lean();
+    if (!exists) {
+      throw new ApiError(404, 'Selected category not found');
+    }
+    return categoryValue;
+  }
+
+  const categoryDoc = await findCategoryFromInput(String(categoryValue));
+
+  if (!categoryDoc) {
+    throw new ApiError(404, 'Selected category not found');
+  }
+
+  return categoryDoc._id;
 };
 
 const buildFilters = async (query = {}, publicOnly = false) => {
@@ -75,15 +161,14 @@ const buildFilters = async (query = {}, publicOnly = false) => {
   }
 
   if (search?.trim()) {
+    const safeSearch = escapeRegex(search.trim());
     filters.$or = [
-      { name: { $regex: search.trim(), $options: 'i' } },
-      { symbol: { $regex: search.trim(), $options: 'i' } },
+      { name: { $regex: safeSearch, $options: 'i' } },
+      { symbol: { $regex: safeSearch, $options: 'i' } },
     ];
   }
 
   if (category && category !== 'All' && category !== 'All Indices') {
-    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
-
     if (objectIdRegex.test(String(category))) {
       filters.category = category;
     } else {
@@ -117,9 +202,23 @@ const mapIndexResponse = (item) => ({
     item.minimumInvestment === null || typeof item.minimumInvestment === 'undefined'
       ? null
       : Number(item.minimumInvestment),
+  lockPeriodDays:
+    item.lockPeriodDays === null || typeof item.lockPeriodDays === 'undefined'
+      ? null
+      : Number(item.lockPeriodDays),
+  currentValue: Number(item.currentValue || 0),
+  highValue: Number(item.highValue || 0),
+  lowValue: Number(item.lowValue || 0),
+  previousClose: Number(item.previousClose || 0),
+  change: Number(item.change || 0),
+  changePercent: Number(item.changePercent || 0),
+  marketCap: Number(item.marketCap || 0),
+  volume: Number(item.volume || 0),
   categoryId: item.category?._id || item.category || null,
   categoryName: item.category?.name || '',
   categorySlug: item.category?.slug || '',
+  categoryColor: item.category?.color || '',
+  categoryIcon: item.category?.icon || '',
 });
 
 export const getAllIndicesService = async (query) => {
@@ -168,7 +267,7 @@ export const getPublicIndicesService = async (query) => {
 
 export const getFeaturedIndicesService = async () => {
   const indices = await Index.find({ isFeatured: true, isActive: true })
-    .populate('category', 'name slug')
+    .populate('category', 'name slug color icon displayOrder isActive')
     .sort({ lastUpdated: -1, createdAt: -1 })
     .limit(10)
     .lean({ virtuals: true });
@@ -177,8 +276,10 @@ export const getFeaturedIndicesService = async () => {
 };
 
 export const getIndexBySymbolService = async ({ symbol }) => {
+  const normalizedSymbol = normalizeString(symbol, 'Symbol').toUpperCase();
+
   const index = await Index.findOne({
-    symbol: symbol?.trim().toUpperCase(),
+    symbol: normalizedSymbol,
     isActive: true,
   })
     .populate('category', 'name slug color icon displayOrder isActive')
@@ -192,50 +293,37 @@ export const getIndexBySymbolService = async ({ symbol }) => {
 };
 
 export const createIndexService = async (payload) => {
-  if (!payload.name?.trim()) {
-    throw new ApiError(400, 'Index name is required');
-  }
+  const name = normalizeString(payload.name, 'Index name');
+  const symbol = normalizeString(payload.symbol, 'Index symbol').toUpperCase();
+  const category = await resolveCategoryId(payload.category, true);
 
-  if (!payload.symbol?.trim()) {
-    throw new ApiError(400, 'Index symbol is required');
-  }
-
-  if (!payload.category) {
-    throw new ApiError(400, 'Category is required');
-  }
-
-  const existingName = await Index.findOne({ name: payload.name.trim() });
+  const existingName = await Index.findOne({ name });
   if (existingName) {
     throw new ApiError(409, 'Index with this name already exists');
   }
 
-  const existingSymbol = await Index.findOne({
-    symbol: payload.symbol.trim().toUpperCase(),
-  });
+  const existingSymbol = await Index.findOne({ symbol });
   if (existingSymbol) {
     throw new ApiError(409, 'Index with this symbol already exists');
   }
 
-  let categoryId = payload.category;
-
-  const objectIdRegex = /^[0-9a-fA-F]{24}$/;
-  if (!objectIdRegex.test(String(payload.category))) {
-    const categoryDoc = await findCategoryFromInput(String(payload.category));
-
-    if (!categoryDoc) {
-      throw new ApiError(404, 'Selected category not found');
-    }
-
-    categoryId = categoryDoc._id;
-  }
-
   const index = await Index.create({
-    ...payload,
-    name: payload.name.trim(),
-    symbol: payload.symbol.trim().toUpperCase(),
-    category: categoryId,
+    name,
+    symbol,
+    category,
+    currentValue: normalizeRequiredNumber(payload.currentValue, 'Current value', { min: 0 }),
+    highValue: normalizeRequiredNumber(payload.highValue, 'High value', { min: 0 }),
+    lowValue: normalizeRequiredNumber(payload.lowValue, 'Low value', { min: 0 }),
+    previousClose: normalizeRequiredNumber(payload.previousClose, 'Previous close', { min: 0 }),
+    logoUrl: normalizeOptionalString(payload.logoUrl),
     defaultDailyRate: normalizeDefaultDailyRate(payload.defaultDailyRate),
     minimumInvestment: normalizeMinimumInvestment(payload.minimumInvestment),
+    lockPeriodDays: normalizeLockPeriodDays(payload.lockPeriodDays),
+    isFeatured: typeof payload.isFeatured === 'boolean' ? payload.isFeatured : false,
+    isActive: typeof payload.isActive === 'boolean' ? payload.isActive : true,
+    marketCap: normalizeNonNegativeNumber(payload.marketCap, 'Market cap'),
+    volume: normalizeNonNegativeNumber(payload.volume, 'Volume'),
+    description: normalizeOptionalString(payload.description),
   });
 
   const populated = await Index.findById(index._id)
@@ -256,36 +344,64 @@ export const updateIndexService = async ({ indexId, payload }) => {
     throw new ApiError(404, 'Index not found');
   }
 
-  if (payload.name && payload.name.trim() !== index.name) {
-    const existingName = await Index.findOne({
-      name: payload.name.trim(),
-      _id: { $ne: indexId },
-    });
+  const nextPayload = {};
 
-    if (existingName) {
-      throw new ApiError(409, 'Index with this name already exists');
+  if (Object.prototype.hasOwnProperty.call(payload, 'name')) {
+    const nextName = normalizeString(payload.name, 'Index name');
+
+    if (nextName !== index.name) {
+      const existingName = await Index.findOne({
+        name: nextName,
+        _id: { $ne: indexId },
+      });
+
+      if (existingName) {
+        throw new ApiError(409, 'Index with this name already exists');
+      }
     }
+
+    nextPayload.name = nextName;
   }
 
-  if (payload.symbol && payload.symbol.trim().toUpperCase() !== index.symbol) {
-    const existingSymbol = await Index.findOne({
-      symbol: payload.symbol.trim().toUpperCase(),
-      _id: { $ne: indexId },
-    });
+  if (Object.prototype.hasOwnProperty.call(payload, 'symbol')) {
+    const nextSymbol = normalizeString(payload.symbol, 'Index symbol').toUpperCase();
 
-    if (existingSymbol) {
-      throw new ApiError(409, 'Index with this symbol already exists');
+    if (nextSymbol !== index.symbol) {
+      const existingSymbol = await Index.findOne({
+        symbol: nextSymbol,
+        _id: { $ne: indexId },
+      });
+
+      if (existingSymbol) {
+        throw new ApiError(409, 'Index with this symbol already exists');
+      }
     }
+
+    nextPayload.symbol = nextSymbol;
   }
 
-  const nextPayload = { ...payload };
-
-  if (payload.name) {
-    nextPayload.name = payload.name.trim();
+  if (Object.prototype.hasOwnProperty.call(payload, 'category')) {
+    nextPayload.category = await resolveCategoryId(payload.category, true);
   }
 
-  if (payload.symbol) {
-    nextPayload.symbol = payload.symbol.trim().toUpperCase();
+  if (Object.prototype.hasOwnProperty.call(payload, 'currentValue')) {
+    nextPayload.currentValue = normalizeRequiredNumber(payload.currentValue, 'Current value', { min: 0 });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'highValue')) {
+    nextPayload.highValue = normalizeRequiredNumber(payload.highValue, 'High value', { min: 0 });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'lowValue')) {
+    nextPayload.lowValue = normalizeRequiredNumber(payload.lowValue, 'Low value', { min: 0 });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'previousClose')) {
+    nextPayload.previousClose = normalizeRequiredNumber(payload.previousClose, 'Previous close', { min: 0 });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'logoUrl')) {
+    nextPayload.logoUrl = normalizeOptionalString(payload.logoUrl);
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'defaultDailyRate')) {
@@ -296,17 +412,28 @@ export const updateIndexService = async ({ indexId, payload }) => {
     nextPayload.minimumInvestment = normalizeMinimumInvestment(payload.minimumInvestment);
   }
 
-  if (payload.category) {
-    const objectIdRegex = /^[0-9a-fA-F]{24}$/;
-    if (!objectIdRegex.test(String(payload.category))) {
-      const categoryDoc = await findCategoryFromInput(String(payload.category));
+  if (Object.prototype.hasOwnProperty.call(payload, 'lockPeriodDays')) {
+    nextPayload.lockPeriodDays = normalizeLockPeriodDays(payload.lockPeriodDays);
+  }
 
-      if (!categoryDoc) {
-        throw new ApiError(404, 'Selected category not found');
-      }
+  if (Object.prototype.hasOwnProperty.call(payload, 'isFeatured')) {
+    nextPayload.isFeatured = payload.isFeatured === true || payload.isFeatured === 'true';
+  }
 
-      nextPayload.category = categoryDoc._id;
-    }
+  if (Object.prototype.hasOwnProperty.call(payload, 'isActive')) {
+    nextPayload.isActive = payload.isActive === true || payload.isActive === 'true';
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'marketCap')) {
+    nextPayload.marketCap = normalizeNonNegativeNumber(payload.marketCap, 'Market cap');
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'volume')) {
+    nextPayload.volume = normalizeNonNegativeNumber(payload.volume, 'Volume');
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'description')) {
+    nextPayload.description = normalizeOptionalString(payload.description);
   }
 
   Object.assign(index, nextPayload);

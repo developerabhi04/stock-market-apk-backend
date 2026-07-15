@@ -3,8 +3,6 @@ import User from '../modules/user/user.model.js';
 import Transaction from '../modules/transaction/transaction.model.js';
 import mongoose from 'mongoose';
 
-const DEFAULT_LOCK_PERIOD_DAYS = 30;
-
 const getIstDateString = (date = new Date()) => {
     return new Date(date).toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
@@ -67,13 +65,14 @@ const runInterestCreditJob = async () => {
 
         for (const investmentData of investments) {
             const session = await mongoose.startSession();
-            session.startTransaction({
-                readPreference: 'primary',
-                readConcern: { level: 'majority' },
-                writeConcern: { w: 'majority' },
-            });
 
             try {
+                session.startTransaction({
+                    readPreference: 'primary',
+                    readConcern: { level: 'majority' },
+                    writeConcern: { w: 'majority' },
+                });
+
                 const investment = await Investment.findOne({
                     _id: investmentData._id,
                     status: 'active',
@@ -94,6 +93,15 @@ const runInterestCreditJob = async () => {
                     await session.abortTransaction();
                     totalSkipped++;
                     console.log(`⏭️ [InterestCreditJob] Skipped ${investment._id}: already credited today`);
+                    continue;
+                }
+
+                const lockPeriodDays = Number(investment.lockPeriodDays);
+
+                if (!Number.isInteger(lockPeriodDays) || lockPeriodDays <= 0) {
+                    await session.abortTransaction();
+                    totalSkipped++;
+                    console.log(`⏭️ [InterestCreditJob] Skipped ${investment._id}: invalid lock period days`);
                     continue;
                 }
 
@@ -121,7 +129,6 @@ const runInterestCreditJob = async () => {
 
                 await user.save({ session });
 
-                const lockPeriodDays = Number(investment.lockPeriodDays || DEFAULT_LOCK_PERIOD_DAYS);
                 const updatedDaysCompleted = Number(investment.daysCompleted || 0) + 1;
 
                 investment.totalInterestEarned = Number(
@@ -165,6 +172,7 @@ const runInterestCreditJob = async () => {
                                 daysCompleted: investment.daysCompleted,
                                 daysRemaining: investment.daysRemaining,
                                 isLockCompleted: investment.isLockCompleted,
+                                lockPeriodDays,
                             },
                             tradeDetails: {
                                 investmentId: investment._id,
@@ -173,6 +181,7 @@ const runInterestCreditJob = async () => {
                                 dailyRate: investment.effectiveDailyRate || 0,
                                 dailyInterestAmount: dailyAmount,
                                 creditDate: new Date(creditDate),
+                                lockPeriodDays,
                             },
                         },
                     ],
@@ -183,7 +192,7 @@ const runInterestCreditJob = async () => {
 
                 totalProcessed++;
                 console.log(
-                    `✅ [InterestCreditJob] Credited ₹${dailyAmount} → User ${user._id} | Investment ${investment._id} | Day ${investment.daysCompleted}`
+                    `✅ [InterestCreditJob] Credited ₹${dailyAmount} → User ${user._id} | Investment ${investment._id} | Day ${investment.daysCompleted}/${lockPeriodDays}`
                 );
             } catch (investmentError) {
                 await session.abortTransaction();
@@ -193,7 +202,7 @@ const runInterestCreditJob = async () => {
                     investmentError.message
                 );
             } finally {
-                session.endSession();
+                await session.endSession();
             }
         }
     } catch (outerError) {
