@@ -1,10 +1,10 @@
+// banner.controller.js
 import { asyncHandler } from '../../shared/utils/asyncHandler.js';
 import { ApiResponse } from '../../shared/utils/apiResponse.js';
 import {
   deleteBannerService,
   getAllBannersAdminService,
   getAllBannersPublicService,
-  reorderBannersService,
   toggleBannerStatusService,
   uploadBannerService
 } from './banner.service.js';
@@ -21,10 +21,11 @@ export const getAllBannersAdmin = asyncHandler(async (req, res) => {
 
 export const uploadBanner = asyncHandler(async (req, res) => {
   const banner = await uploadBannerService({
-    file: req.file,
+    imageUrl: req.body.imageUrl,
+    linkUrl: req.body.linkUrl,
     adminId: req.admin.adminId
   });
-  res.status(201).json(new ApiResponse(201, { banner }, 'Banner uploaded successfully'));
+  res.status(201).json(new ApiResponse(201, { banner }, 'Banner added successfully'));
 });
 
 export const deleteBanner = asyncHandler(async (req, res) => {
@@ -43,9 +44,4 @@ export const toggleBannerStatus = asyncHandler(async (req, res) => {
         `Banner ${banner.isActive ? 'activated' : 'deactivated'}`
       )
     );
-});
-
-export const reorderBanners = asyncHandler(async (req, res) => {
-  await reorderBannersService({ banners: req.body.banners });
-  res.status(200).json(new ApiResponse(200, null, 'Banners reordered successfully'));
 });

@@ -1,65 +1,56 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+// banner.service.js
 import Banner from './banner.model.js';
 import { ApiError } from '../../shared/utils/apiError.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
-
-const toAbsoluteUrl = (filePath) => {
-  if (!filePath) return '';
-  if (filePath.startsWith('http://') || filePath.startsWith('https://')) return filePath;
-  return `${PUBLIC_BASE_URL}${filePath.startsWith('/') ? '' : '/'}${filePath}`;
+const isValidUrl = (value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 };
 
 export const getAllBannersPublicService = async () => {
   const banners = await Banner.find({ isActive: true })
-    .sort({ order: 1 })
-    .select('imageUrl order isActive createdAt updatedAt')
+    .sort({ createdAt: -1 })
+    .select('imageUrl linkUrl isActive createdAt updatedAt')
     .lean();
 
-  return banners.map((banner) => ({
-    ...banner,
-    imageUrl: toAbsoluteUrl(banner.imageUrl),
-  }));
+  return banners;
 };
 
 export const getAllBannersAdminService = async () => {
   const banners = await Banner.find()
-    .sort({ order: 1, createdAt: -1 })
+    .sort({ createdAt: -1 })
     .populate('createdBy', 'username fullName')
     .lean();
 
-  return banners.map((banner) => ({
-    ...banner,
-    imageUrl: toAbsoluteUrl(banner.imageUrl),
-  }));
+  return banners;
 };
 
-export const uploadBannerService = async ({ file, adminId }) => {
-  if (!file) {
-    throw new ApiError(400, 'Please upload an image file');
+export const uploadBannerService = async ({ imageUrl, linkUrl, adminId }) => {
+  if (!imageUrl || !imageUrl.trim()) {
+    throw new ApiError(400, 'Please provide an image URL');
   }
 
-  const imageUrl = `/uploads/banners/${file.filename}`;
+  const trimmedImageUrl = imageUrl.trim();
 
-  const maxOrderBanner = await Banner.findOne().sort({ order: -1 });
-  const newOrder = maxOrderBanner ? maxOrderBanner.order + 1 : 0;
+  if (!isValidUrl(trimmedImageUrl)) {
+    throw new ApiError(400, 'Please provide a valid image URL (must start with http:// or https://)');
+  }
+
+  if (linkUrl && linkUrl.trim() && !isValidUrl(linkUrl.trim())) {
+    throw new ApiError(400, 'Please provide a valid link URL (must start with http:// or https://)');
+  }
 
   const banner = await Banner.create({
-    imageUrl,
-    order: newOrder,
+    imageUrl: trimmedImageUrl,
+    linkUrl: linkUrl ? linkUrl.trim() : '',
     createdBy: adminId,
   });
 
-  return {
-    ...banner.toObject(),
-    imageUrl: toAbsoluteUrl(imageUrl),
-  };
+  return banner.toObject();
 };
 
 export const deleteBannerService = async ({ id }) => {
@@ -67,15 +58,6 @@ export const deleteBannerService = async ({ id }) => {
 
   if (!banner) {
     throw new ApiError(404, 'Banner not found');
-  }
-
-  if (banner.imageUrl) {
-    const relativePath = banner.imageUrl.replace(PUBLIC_BASE_URL, '');
-    const imagePath = path.join(__dirname, '../../..', relativePath);
-
-    if (fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-    }
   }
 
   await Banner.findByIdAndDelete(id);
@@ -92,20 +74,5 @@ export const toggleBannerStatusService = async ({ id }) => {
   banner.isActive = !banner.isActive;
   await banner.save();
 
-  return {
-    ...banner.toObject(),
-    imageUrl: toAbsoluteUrl(banner.imageUrl),
-  };
-};
-
-export const reorderBannersService = async ({ banners }) => {
-  if (!Array.isArray(banners) || banners.length === 0) {
-    throw new ApiError(400, 'Banners array is required');
-  }
-
-  await Promise.all(
-    banners.map(({ id, order }) => Banner.findByIdAndUpdate(id, { order }, { new: true }))
-  );
-
-  return null;
+  return banner.toObject();
 };
