@@ -206,7 +206,6 @@ const mapIndexResponse = (item) => ({
     item.lockPeriodDays === null || typeof item.lockPeriodDays === 'undefined'
       ? null
       : Number(item.lockPeriodDays),
-  currentValue: Number(item.currentValue || 0),
   highValue: Number(item.highValue || 0),
   lowValue: Number(item.lowValue || 0),
   previousClose: Number(item.previousClose || 0),
@@ -306,7 +305,6 @@ export const createIndexService = async (payload) => {
     name,
     symbol,
     category,
-    currentValue: normalizeRequiredNumber(payload.currentValue, 'Current value', { min: 0 }),
     highValue: normalizeRequiredNumber(payload.highValue, 'High value', { min: 0 }),
     lowValue: normalizeRequiredNumber(payload.lowValue, 'Low value', { min: 0 }),
     previousClose: normalizeRequiredNumber(payload.previousClose, 'Previous close', { min: 0 }),
@@ -319,6 +317,8 @@ export const createIndexService = async (payload) => {
     marketCap: normalizeNonNegativeNumber(payload.marketCap, 'Market cap'),
     volume: normalizeNonNegativeNumber(payload.volume, 'Volume'),
     description: normalizeOptionalString(payload.description),
+    change: normalizeOptionalNumber(payload.change, 'Change', { min: -Infinity }) ?? 0,
+    changePercent: normalizeOptionalNumber(payload.changePercent, 'Change percent', { min: -Infinity }) ?? 0,
   });
 
   const populated = await Index.findById(index._id)
@@ -367,10 +367,6 @@ export const updateIndexService = async ({ indexId, payload }) => {
     nextPayload.category = await resolveCategoryId(payload.category, true);
   }
 
-  if (Object.prototype.hasOwnProperty.call(payload, 'currentValue')) {
-    nextPayload.currentValue = normalizeRequiredNumber(payload.currentValue, 'Current value', { min: 0 });
-  }
-
   if (Object.prototype.hasOwnProperty.call(payload, 'highValue')) {
     nextPayload.highValue = normalizeRequiredNumber(payload.highValue, 'High value', { min: 0 });
   }
@@ -417,6 +413,14 @@ export const updateIndexService = async ({ indexId, payload }) => {
 
   if (Object.prototype.hasOwnProperty.call(payload, 'description')) {
     nextPayload.description = normalizeOptionalString(payload.description);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'change')) {
+    nextPayload.change = normalizeOptionalNumber(payload.change, 'Change', { min: -Infinity }) ?? 0;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'changePercent')) {
+    nextPayload.changePercent = normalizeOptionalNumber(payload.changePercent, 'Change percent', { min: -Infinity }) ?? 0;
   }
 
   Object.assign(index, nextPayload);

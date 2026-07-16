@@ -20,11 +20,6 @@ const indexSchema = new mongoose.Schema(
             required: true,
             default: null,
         },
-        currentValue: {
-            type: Number,
-            required: true,
-            min: 0,
-        },
         highValue: {
             type: Number,
             required: true,
@@ -104,7 +99,6 @@ const indexSchema = new mongoose.Schema(
 indexSchema.index({ category: 1, isActive: 1 });
 indexSchema.index({ isFeatured: 1, isActive: 1 });
 
-
 indexSchema.virtual('isPositive').get(function () {
     return this.change >= 0;
 });
@@ -129,15 +123,16 @@ indexSchema.pre('validate', function (next) {
         this.description = String(this.description).trim();
     }
 
-    this.currentValue = Number(this.currentValue);
     this.highValue = Number(this.highValue);
     this.lowValue = Number(this.lowValue);
     this.previousClose = Number(this.previousClose);
     this.marketCap = Number(this.marketCap || 0);
     this.volume = Number(this.volume || 0);
+    this.change = Number(this.change || 0);
+    this.changePercent = Number(this.changePercent || 0);
 
-    if ([this.currentValue, this.highValue, this.lowValue, this.previousClose].some(Number.isNaN)) {
-        return next(new Error('Current value, high value, low value, and previous close must be valid numbers'));
+    if ([this.highValue, this.lowValue, this.previousClose].some(Number.isNaN)) {
+        return next(new Error('High value, low value, and previous close must be valid numbers'));
     }
 
     if (Number.isNaN(this.marketCap) || this.marketCap < 0) {
@@ -146,6 +141,14 @@ indexSchema.pre('validate', function (next) {
 
     if (Number.isNaN(this.volume) || this.volume < 0) {
         return next(new Error('Volume must be a valid non-negative number'));
+    }
+
+    if (Number.isNaN(this.change)) {
+        this.change = 0;
+    }
+
+    if (Number.isNaN(this.changePercent)) {
+        this.changePercent = 0;
     }
 
     if (this.defaultDailyRate === '') {
@@ -192,13 +195,10 @@ indexSchema.pre('validate', function (next) {
         }
     }
 
-    this.change = Number((this.currentValue - this.previousClose).toFixed(2));
-    this.changePercent =
-        this.previousClose > 0
-            ? Number((((this.currentValue - this.previousClose) / this.previousClose) * 100).toFixed(2))
-            : 0;
-
+    this.change = Number(this.change.toFixed(2));
+    this.changePercent = Number(this.changePercent.toFixed(2));
     this.lastUpdated = new Date();
+
     next();
 });
 
