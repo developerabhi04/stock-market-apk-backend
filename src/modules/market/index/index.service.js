@@ -275,27 +275,26 @@ export const getFeaturedIndicesService = async () => {
   return indices.map(mapIndexResponse);
 };
 
-export const getIndicesBySymbolService = async ({ symbol }) => {
-  const normalizedSymbol = normalizeString(symbol, 'Symbol').toUpperCase();
+export const getIndexBySymbolService = async ({ symbol }) => {
+  const normalizedSymbol = normalizeString(symbol, 'Symbol');
 
-  const indices = await Index.find({
+  const index = await Index.findOne({
     symbol: normalizedSymbol,
     isActive: true,
   })
     .populate('category', 'name slug color icon displayOrder isActive')
-    .sort({ isFeatured: -1, createdAt: -1, name: 1 })
     .lean({ virtuals: true });
 
-  if (!indices.length) {
-    throw new ApiError(404, 'Indices not found');
+  if (!index) {
+    throw new ApiError(404, 'Index not found');
   }
 
-  return indices.map(mapIndexResponse);
+  return mapIndexResponse(index);
 };
 
 export const createIndexService = async (payload) => {
   const name = normalizeString(payload.name, 'Index name');
-  const symbol = normalizeString(payload.symbol, 'Index symbol').toUpperCase();
+  const symbol = normalizeString(payload.symbol, 'Index symbol');
   const category = await resolveCategoryId(payload.category, true);
 
   const existingName = await Index.findOne({ name });
@@ -360,7 +359,7 @@ export const updateIndexService = async ({ indexId, payload }) => {
   }
 
   if (Object.prototype.hasOwnProperty.call(payload, 'symbol')) {
-    const nextSymbol = normalizeString(payload.symbol, 'Index symbol').toUpperCase();
+    const nextSymbol = normalizeString(payload.symbol, 'Index symbol');
     nextPayload.symbol = nextSymbol;
   }
 
