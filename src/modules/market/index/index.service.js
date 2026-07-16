@@ -302,11 +302,6 @@ export const createIndexService = async (payload) => {
     throw new ApiError(409, 'Index with this name already exists');
   }
 
-  const existingSymbol = await Index.findOne({ symbol });
-  if (existingSymbol) {
-    throw new ApiError(409, 'Index with this symbol already exists');
-  }
-
   const index = await Index.create({
     name,
     symbol,
@@ -365,18 +360,6 @@ export const updateIndexService = async ({ indexId, payload }) => {
 
   if (Object.prototype.hasOwnProperty.call(payload, 'symbol')) {
     const nextSymbol = normalizeString(payload.symbol, 'Index symbol').toUpperCase();
-
-    if (nextSymbol !== index.symbol) {
-      const existingSymbol = await Index.findOne({
-        symbol: nextSymbol,
-        _id: { $ne: indexId },
-      });
-
-      if (existingSymbol) {
-        throw new ApiError(409, 'Index with this symbol already exists');
-      }
-    }
-
     nextPayload.symbol = nextSymbol;
   }
 

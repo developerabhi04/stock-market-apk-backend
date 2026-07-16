@@ -103,7 +103,7 @@ const indexSchema = new mongoose.Schema(
 
 indexSchema.index({ category: 1, isActive: 1 });
 indexSchema.index({ isFeatured: 1, isActive: 1 });
-indexSchema.index({ name: 1, symbol: 1 });
+
 
 indexSchema.virtual('isPositive').get(function () {
     return this.change >= 0;
