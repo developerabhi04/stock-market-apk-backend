@@ -275,21 +275,22 @@ export const getFeaturedIndicesService = async () => {
   return indices.map(mapIndexResponse);
 };
 
-export const getIndexBySymbolService = async ({ symbol }) => {
+export const getIndicesBySymbolService = async ({ symbol }) => {
   const normalizedSymbol = normalizeString(symbol, 'Symbol').toUpperCase();
 
-  const index = await Index.findOne({
+  const indices = await Index.find({
     symbol: normalizedSymbol,
     isActive: true,
   })
     .populate('category', 'name slug color icon displayOrder isActive')
+    .sort({ isFeatured: -1, createdAt: -1, name: 1 })
     .lean({ virtuals: true });
 
-  if (!index) {
-    throw new ApiError(404, 'Index not found');
+  if (!indices.length) {
+    throw new ApiError(404, 'Indices not found');
   }
 
-  return mapIndexResponse(index);
+  return indices.map(mapIndexResponse);
 };
 
 export const createIndexService = async (payload) => {

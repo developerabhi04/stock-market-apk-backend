@@ -4,7 +4,7 @@ import {
   getAllIndicesService,
   getPublicIndicesService,
   getFeaturedIndicesService,
-  getIndexBySymbolService,
+  getIndicesBySymbolService,
   createIndexService,
   updateIndexService,
   deleteIndexService,
@@ -38,11 +38,13 @@ export const getFeaturedIndices = asyncHandler(async (req, res) => {
   );
 });
 
-export const getIndexBySymbol = asyncHandler(async (req, res) => {
-  const data = await getIndexBySymbolService({ symbol: req.params.symbol });
+export const getIndicesBySymbol = asyncHandler(async (req, res) => {
+  const indices = await getIndicesBySymbolService({
+    symbol: req.params.symbol,
+  });
 
   res.status(200).json(
-    new ApiResponse(200, data, 'Index fetched successfully')
+    new ApiResponse(200, { indices }, 'Indices fetched successfully')
   );
 });
 

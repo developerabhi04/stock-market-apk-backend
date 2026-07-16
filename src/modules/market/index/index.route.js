@@ -2,14 +2,13 @@ import express from 'express';
 import {
     getAllIndices,
     getFeaturedIndices,
-    getIndexBySymbol,
+    getIndicesBySymbol,
 } from './index.controller.js';
 
 const router = express.Router();
 
 router.get('/', getAllIndices);
-
 router.get('/featured', getFeaturedIndices);
-router.get('/:symbol', getIndexBySymbol);
+router.get('/:symbol', getIndicesBySymbol);
 
 export default router;
