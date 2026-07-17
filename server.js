@@ -4,7 +4,7 @@ import app from './src/app.js';
 import { getConnectionStats } from './src/shared/database/db.js';
 import { connectDatabase } from './src/bootstrap/connectDatabase.js';
 import { registerEvents, registerGracefulShutdown } from './src/bootstrap/registerEvents.js';
-import { registerJobs } from './src/jobs/index.js';
+import { registerCronJobs } from './src/jobs/index.js';
 
 registerEvents();
 await connectDatabase();
@@ -29,7 +29,7 @@ const server = app.listen(PORT, () => {
   console.log(`🖼️ Uploads: ${PUBLIC_BASE_URL ? `${PUBLIC_BASE_URL}/uploads` : `http://localhost:${PORT}/uploads`}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-  registerJobs();
+  registerCronJobs();
 });
 
 server.on('error', (error) => {

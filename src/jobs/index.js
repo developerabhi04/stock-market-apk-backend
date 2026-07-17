@@ -3,7 +3,7 @@ import runInterestCreditJob from './interestCredit.job.js';
 import runMarketSyncJob from './marketSync.job.js';
 import runNotificationJob from './notification.job.js';
 
-export const registerCronJobs = () => {
+export const registerJobs = () => {
     console.log('⏰ Registering cron jobs...');
 
     cron.schedule(
