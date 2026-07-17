@@ -6,7 +6,7 @@ import {
     canManageMarket,
     canManageTransactions,
     canManageUsers,
-    canViewDashboard
+    canViewDashboard,
 } from '../../shared/middleware/checkPermissions.middleware.js';
 
 import {
@@ -32,7 +32,7 @@ import {
     getWithdrawalStats,
     updateAdminRole,
     updateStock,
-    updateUserBalance
+    updateUserBalance,
 } from './admin.controller.js';
 
 const router = express.Router();
