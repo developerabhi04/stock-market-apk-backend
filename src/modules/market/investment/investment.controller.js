@@ -11,6 +11,9 @@ import {
     overrideInvestmentRateAdminService,
     rejectInvestmentOrderAdminService,
     resolveInvestmentPreviewService,
+    unlockInvestmentService,
+    renewInvestmentService,
+    reinvestInvestmentService,
 } from './investment.service.js';
 
 // ─── User Controllers ────────────────────────────────────────────────────────
@@ -99,6 +102,54 @@ export const resolveInvestmentPreview = asyncHandler(async (req, res) => {
     return res
         .status(200)
         .json(new ApiResponse(200, preview, 'Investment preview resolved successfully'));
+});
+
+// ─── Unlock / Renew / Reinvest Controllers ───────────────────────────────────
+
+export const unlockInvestment = asyncHandler(async (req, res) => {
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
+
+    const investment = await unlockInvestmentService({
+        investmentId: req.params.investmentId,
+        userId,
+    });
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(
+                200,
+                investment,
+                'Investment unlocked successfully. Principal credited to wallet.'
+            )
+        );
+});
+
+export const renewInvestment = asyncHandler(async (req, res) => {
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
+
+    const investment = await renewInvestmentService({
+        investmentId: req.params.investmentId,
+        userId,
+    });
+
+    return res
+        .status(201)
+        .json(new ApiResponse(201, investment, 'Investment renewed successfully'));
+});
+
+export const reinvestInvestment = asyncHandler(async (req, res) => {
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
+
+    const investment = await reinvestInvestmentService({
+        investmentId: req.params.investmentId,
+        userId,
+        payload: req.body,
+    });
+
+    return res
+        .status(201)
+        .json(new ApiResponse(201, investment, 'Reinvestment successful'));
 });
 
 // ─── Admin Controllers ────────────────────────────────────────────────────────

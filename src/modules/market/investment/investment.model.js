@@ -1,6 +1,14 @@
 import mongoose from 'mongoose';
 
-const INVESTMENT_STATUSES = ['pending', 'active', 'rejected', 'cancelled', 'completed'];
+const INVESTMENT_STATUSES = [
+    'pending',
+    'active',
+    'rejected',
+    'cancelled',
+    'completed',
+    'unlocked',
+    'closed_reinvested',
+];
 const CANCELLED_BY = ['user', 'admin', null];
 const RATE_SOURCES = ['default', 'slab', 'custom', 'manual', 'admin_override', ''];
 
@@ -102,6 +110,11 @@ const investmentSchema = new mongoose.Schema(
             default: null,
         },
 
+        unlockedAt: {
+            type: Date,
+            default: null,
+        },
+
         principalReturnedAt: {
             type: Date,
             default: null,
@@ -197,6 +210,18 @@ const investmentSchema = new mongoose.Schema(
             default: null,
         },
 
+        renewedFromInvestmentId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Investment',
+            default: null,
+        },
+
+        renewedToInvestmentId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Investment',
+            default: null,
+        },
+
         indexSnapshot: {
             name: {
                 type: String,
@@ -285,11 +310,27 @@ investmentSchema.virtual('canCancel').get(function () {
     return this.status === 'active' && this.isLockCompleted === true;
 });
 
+investmentSchema.virtual('canUnlock').get(function () {
+    return this.status === 'active' && this.isLockCompleted === true;
+});
+
+investmentSchema.virtual('canRenew').get(function () {
+    return this.status === 'unlocked';
+});
+
+investmentSchema.virtual('canReinvest').get(function () {
+    return this.status === 'unlocked';
+});
+
 investmentSchema.virtual('isActiveInvestment').get(function () {
     return this.status === 'active';
 });
 
 investmentSchema.virtual('isUnlocked').get(function () {
+    return this.status === 'unlocked';
+});
+
+investmentSchema.virtual('isMatured').get(function () {
     return this.status === 'active' && this.isLockCompleted === true;
 });
 
@@ -405,19 +446,31 @@ investmentSchema.pre('validate', function (next) {
         this.cancelledAt = new Date();
     }
 
-    if (this.status === 'completed' && !this.completedAt) {
+    if ((this.status === 'completed' || this.status === 'closed_reinvested') && !this.completedAt) {
         this.completedAt = new Date();
     }
 
+    if (this.status === 'unlocked' && !this.unlockedAt) {
+        this.unlockedAt = new Date();
+    }
+
+    const ratesRequiredStatuses = [
+        'active',
+        'completed',
+        'cancelled',
+        'unlocked',
+        'closed_reinvested',
+    ];
+
     if (
-        (this.status === 'active' || this.status === 'completed' || this.status === 'cancelled') &&
+        ratesRequiredStatuses.includes(this.status) &&
         (this.effectiveDailyRate === null || typeof this.effectiveDailyRate === 'undefined')
     ) {
         return next(new Error('Effective daily rate is required for active investments'));
     }
 
     if (
-        (this.status === 'active' || this.status === 'completed' || this.status === 'cancelled') &&
+        ratesRequiredStatuses.includes(this.status) &&
         (typeof this.dailyInterestAmount === 'undefined' || this.dailyInterestAmount < 0)
     ) {
         return next(new Error('Daily interest amount must be set for active investments'));

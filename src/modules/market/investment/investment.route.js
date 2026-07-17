@@ -14,6 +14,9 @@ import {
     placeInvestmentOrder,
     rejectInvestmentOrder,
     resolveInvestmentPreview,
+    unlockInvestment,
+    renewInvestment,
+    reinvestInvestment,
 } from './investment.controller.js';
 
 const router = express.Router();
@@ -33,9 +36,15 @@ router.patch('/admin/:investmentId/approve', authenticateAdmin, canManageMarket,
 router.patch('/admin/:investmentId/reject', authenticateAdmin, canManageMarket, rejectInvestmentOrder);
 router.patch('/admin/:investmentId/rate', authenticateAdmin, canManageMarket, overrideInvestmentRate);
 
+// ─── Unlock / Renew / Reinvest Routes (must come BEFORE dynamic :investmentId) ─
+
+router.post('/:investmentId/unlock', authenticate, unlockInvestment);
+router.post('/:investmentId/renew', authenticate, renewInvestment);
+router.post('/:investmentId/reinvest', authenticate, reinvestInvestment);
+router.post('/:investmentId/cancel', authenticate, cancelInvestment);
+
 // ─── Dynamic routes last ──────────────────────────────────────────────────────
 
 router.get('/:investmentId', authenticate, getMyInvestmentById);
-router.post('/:investmentId/cancel', authenticate, cancelInvestment);
 
 export default router;

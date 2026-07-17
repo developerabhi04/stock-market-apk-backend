@@ -8,35 +8,28 @@ import { ApiError } from '../../../shared/utils/apiError.js';
 
 const normalizeAmount = (value) => {
     const numericValue = Number(value);
-
     if (Number.isNaN(numericValue)) {
         throw new ApiError(400, 'Amount must be a valid number');
     }
-
     return Number(numericValue.toFixed(2));
 };
 
 const normalizeRate = (value, fieldName = 'Rate') => {
     const numericValue = Number(value);
-
     if (Number.isNaN(numericValue)) {
         throw new ApiError(400, `${fieldName} must be a valid number`);
     }
-
     if (numericValue < 0) {
         throw new ApiError(400, `${fieldName} cannot be negative`);
     }
-
     return Number(numericValue.toFixed(2));
 };
 
 const normalizePositiveInteger = (value, fieldName = 'Value') => {
     const numericValue = Number(value);
-
     if (Number.isNaN(numericValue) || !Number.isInteger(numericValue) || numericValue < 1) {
         throw new ApiError(400, `${fieldName} must be an integer greater than 0`);
     }
-
     return numericValue;
 };
 
@@ -60,21 +53,17 @@ const getEndOfDayUtc = (date = new Date()) => {
 
 const getIndexMinimumInvestment = (indexDoc) => {
     const minimumInvestment = Number(indexDoc?.minimumInvestment);
-
     if (Number.isNaN(minimumInvestment) || minimumInvestment <= 0) {
         throw new ApiError(400, 'This index does not have a minimum investment configured. Contact admin.');
     }
-
     return Number(minimumInvestment.toFixed(2));
 };
 
 const getIndexLockPeriodDays = (indexDoc) => {
     const lockPeriodDays = Number(indexDoc?.lockPeriodDays);
-
     if (Number.isNaN(lockPeriodDays) || !Number.isInteger(lockPeriodDays) || lockPeriodDays < 1) {
         throw new ApiError(400, 'This index does not have a valid lock period configured. Contact admin.');
     }
-
     return lockPeriodDays;
 };
 
@@ -86,13 +75,10 @@ const getIndexDefaultDailyRate = (indexDoc) => {
     ) {
         return null;
     }
-
     const defaultDailyRate = Number(indexDoc.defaultDailyRate);
-
     if (Number.isNaN(defaultDailyRate) || defaultDailyRate < 0) {
         throw new ApiError(400, 'This index has an invalid default daily rate configured.');
     }
-
     return Number(defaultDailyRate.toFixed(2));
 };
 
@@ -117,23 +103,32 @@ const mapInvestmentResponse = (investment) => {
             ? Math.min(Number(((daysCompleted / lockPeriodDays) * 100).toFixed(2)), 100)
             : 0;
 
+    const isLockCompleted = investment.isLockCompleted === true;
+    const isUnlockedAlready = investment.status === 'unlocked';
+
     return {
         ...investment,
         id: investment._id,
         amount,
         minimumInvestment: minimumInvestment === null ? null : Number(minimumInvestment),
         totalInterestEarned,
+        earned: totalInterestEarned,
         effectiveDailyRate,
         dailyInterestAmount,
+        daily: dailyInterestAmount,
         daysCompleted,
         daysRemaining,
         lockPeriodDays,
         rateSource,
         progressPercent,
-        canCancel: investment.status === 'active' && investment.isLockCompleted === true,
+        canCancel: investment.status === 'active' && isLockCompleted === true,
+        canUnlock: investment.status === 'active' && isLockCompleted === true,
+        canRenew: isUnlockedAlready,
+        canReinvest: isUnlockedAlready,
         isActiveInvestment: investment.status === 'active',
-        isLocked: investment.status === 'active' && investment.isLockCompleted !== true,
-        isUnlocked: investment.status === 'active' && investment.isLockCompleted === true,
+        isLocked: investment.status === 'active' && isLockCompleted !== true,
+        isUnlocked: isUnlockedAlready,
+        isMatured: investment.status === 'active' && isLockCompleted === true,
     };
 };
 
@@ -472,6 +467,7 @@ export const getMyPortfolioService = async ({ userId, query = {} }) => {
             activeInvestments: mapped.filter((item) => item.status === 'active').length,
             completedInvestments: mapped.filter((item) => item.isLockCompleted === true).length,
             cancelledInvestments: mapped.filter((item) => item.status === 'cancelled').length,
+            unlockedInvestments: mapped.filter((item) => item.status === 'unlocked').length,
             totalPrincipalInvested: mapped
                 .filter((item) => item.status === 'active')
                 .reduce((sum, item) => sum + Number(item.amount || 0), 0),
@@ -936,4 +932,258 @@ export const resolveInvestmentPreviewService = async ({ userId, indexId, amount 
             icon: indexDoc.category?.icon || '',
         },
     };
+};
+
+// ─── Unlock / Renew / Reinvest ───────────────────────────────────────────────
+
+export const unlockInvestmentService = async ({ investmentId, userId }) => {
+    if (!mongoose.Types.ObjectId.isValid(investmentId)) {
+        throw new ApiError(400, 'Invalid investment id');
+    }
+    if (!userId) {
+        throw new ApiError(401, 'User authentication required');
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction({
+        readPreference: 'primary',
+        readConcern: { level: 'majority' },
+        writeConcern: { w: 'majority' },
+    });
+
+    try {
+        const investment = await Investment.findOne({
+            _id: investmentId,
+            userId,
+            status: 'active',
+        }).session(session);
+
+        if (!investment) {
+            throw new ApiError(404, 'Active investment not found');
+        }
+
+        if (!investment.isLockCompleted) {
+            throw new ApiError(
+                400,
+                `Investment is still locked. Unlock is available after ${investment.lockPeriodDays} days`
+            );
+        }
+
+        const user = await User.findById(userId).session(session);
+        if (!user || !user.isActive) {
+            throw new ApiError(404, 'User not found');
+        }
+
+        const balanceBefore = Number(user.walletBalance);
+        user.walletBalance = Number((balanceBefore + Number(investment.amount)).toFixed(2));
+        const balanceAfter = Number(user.walletBalance);
+
+        await user.save({ session });
+
+        investment.status = 'unlocked';
+        investment.principalReturnedAt = new Date();
+
+        await investment.save({ session });
+
+        await createInvestmentTransaction({
+            session,
+            user,
+            investment,
+            type: 'credit',
+            category: 'investment_unlock',
+            amount: investment.amount,
+            balanceBefore,
+            balanceAfter,
+            description: `Investment principal unlocked for ${investment.indexSnapshot?.name || 'investment'}`,
+            metadata: {
+                investmentId: investment._id,
+                action: 'investment_unlocked',
+                totalInterestEarned: investment.totalInterestEarned,
+            },
+        });
+
+        await session.commitTransaction();
+
+        const unlockedInvestment = await Investment.findById(investment._id)
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
+            .populate('categoryId', 'name slug color icon')
+            .lean({ virtuals: true });
+
+        return mapInvestmentResponse(unlockedInvestment);
+    } catch (error) {
+        await session.abortTransaction();
+        throw error;
+    } finally {
+        await session.endSession();
+    }
+};
+
+export const renewInvestmentService = async ({ investmentId, userId }) => {
+    if (!mongoose.Types.ObjectId.isValid(investmentId)) {
+        throw new ApiError(400, 'Invalid investment id');
+    }
+    if (!userId) {
+        throw new ApiError(401, 'User authentication required');
+    }
+
+    const session = await mongoose.startSession();
+    session.startTransaction({
+        readPreference: 'primary',
+        readConcern: { level: 'majority' },
+        writeConcern: { w: 'majority' },
+    });
+
+    try {
+        const oldInvestment = await Investment.findOne({
+            _id: investmentId,
+            userId,
+            status: 'unlocked',
+        }).session(session);
+
+        if (!oldInvestment) {
+            throw new ApiError(400, 'Investment must be unlocked before it can be renewed');
+        }
+
+        const user = await User.findById(userId).session(session);
+        if (!user || !user.isActive) {
+            throw new ApiError(404, 'User not found');
+        }
+
+        const amount = Number(oldInvestment.amount);
+
+        if (Number(user.walletBalance) < amount) {
+            throw new ApiError(400, 'Insufficient wallet balance to renew this investment');
+        }
+
+        const indexDoc = await Index.findOne({ _id: oldInvestment.indexId, isActive: true })
+            .populate('category', 'name slug color icon')
+            .session(session);
+
+        if (!indexDoc) {
+            throw new ApiError(404, 'Index is no longer active. Please reinvest instead.');
+        }
+
+        const indexObj = indexDoc.toObject ? indexDoc.toObject() : indexDoc;
+
+        const lockPeriodDays = getIndexLockPeriodDays(indexObj);
+        const indexDefaultDailyRate = getIndexDefaultDailyRate(indexObj);
+        const minimumInvestment = getIndexMinimumInvestment(indexObj);
+        const slab = await getMatchingInterestSlab(amount, session);
+        const rateConfig = resolveRateForInvestment({ indexDoc: indexObj, slab, customDailyRate: null });
+        const dailyInterestAmount = Number(((amount * rateConfig.effectiveDailyRate) / 100).toFixed(2));
+
+        const balanceBefore = Number(user.walletBalance);
+        user.walletBalance = Number((balanceBefore - amount).toFixed(2));
+        const balanceAfter = Number(user.walletBalance);
+        await user.save({ session });
+
+        const approvedAt = new Date();
+        const lockEndsAt = new Date(approvedAt);
+        lockEndsAt.setDate(lockEndsAt.getDate() + lockPeriodDays);
+
+        const newInvestmentDocs = await Investment.create(
+            [
+                {
+                    userId: user._id,
+                    indexId: indexObj._id,
+                    categoryId: indexObj.category?._id || null,
+                    orderNumber: generateOrderNumber(),
+                    amount,
+                    minimumInvestment,
+                    status: 'active',
+                    lockPeriodDays,
+                    daysCompleted: 0,
+                    daysRemaining: lockPeriodDays,
+                    isLockCompleted: false,
+                    orderPlacedAt: approvedAt,
+                    approvedAt,
+                    lockEndsAt,
+                    currentValueSnapshot: Number(indexObj.currentValue || 0),
+                    slabId: slab?._id || null,
+                    slabDailyRate: rateConfig.slabDailyRate,
+                    customDailyRate: rateConfig.customDailyRate,
+                    effectiveDailyRate: rateConfig.effectiveDailyRate,
+                    dailyInterestAmount,
+                    rateSource: rateConfig.rateSource,
+                    ...buildInvestmentSnapshot({
+                        ...indexObj,
+                        minimumInvestment,
+                        lockPeriodDays,
+                        defaultDailyRate: indexDefaultDailyRate,
+                    }),
+                },
+            ],
+            { session }
+        );
+
+        const newInvestment = newInvestmentDocs[0];
+
+        oldInvestment.status = 'completed';
+        oldInvestment.completedAt = oldInvestment.completedAt || new Date();
+        await oldInvestment.save({ session });
+
+        await createInvestmentTransaction({
+            session,
+            user,
+            investment: newInvestment,
+            type: 'debit',
+            category: 'investment_renew',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            description: `Investment renewed for ${newInvestment.indexSnapshot?.name || 'investment'}`,
+            metadata: {
+                oldInvestmentId: oldInvestment._id,
+                newInvestmentId: newInvestment._id,
+                action: 'investment_renewed',
+            },
+        });
+
+        await session.commitTransaction();
+
+        const createdInvestment = await Investment.findById(newInvestment._id)
+            .populate('indexId', 'name symbol logoUrl currentValue minimumInvestment lockPeriodDays defaultDailyRate')
+            .populate('categoryId', 'name slug color icon')
+            .lean({ virtuals: true });
+
+        return mapInvestmentResponse(createdInvestment);
+    } catch (error) {
+        await session.abortTransaction();
+        throw error;
+    } finally {
+        await session.endSession();
+    }
+};
+
+export const reinvestInvestmentService = async ({ investmentId, userId, payload = {} }) => {
+    if (!mongoose.Types.ObjectId.isValid(investmentId)) {
+        throw new ApiError(400, 'Invalid investment id');
+    }
+    if (!userId) {
+        throw new ApiError(401, 'User authentication required');
+    }
+
+    const oldInvestment = await Investment.findOne({
+        _id: investmentId,
+        userId,
+        status: 'unlocked',
+    }).lean();
+
+    if (!oldInvestment) {
+        throw new ApiError(400, 'Investment must be unlocked before reinvesting');
+    }
+
+    const indexId = payload.indexId || String(oldInvestment.indexId);
+    const amount = payload.amount ? normalizeAmount(payload.amount) : Number(oldInvestment.amount);
+
+    const newInvestment = await createInvestmentOrderService({
+        userId,
+        payload: { indexId, amount, customDailyRate: payload.customDailyRate },
+    });
+
+    await Investment.findByIdAndUpdate(oldInvestment._id, {
+        status: 'closed_reinvested',
+    });
+
+    return newInvestment;
 };
