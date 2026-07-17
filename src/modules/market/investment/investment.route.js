@@ -22,31 +22,46 @@ import {
 
 const router = express.Router();
 
-// ─── User Routes ──────────────────────────────────────────────────────────────
-
+// User Routes
 router.post('/preview', authenticate, resolveInvestmentPreview);
 router.post('/orders', authenticate, placeInvestmentOrder);
 router.get('/my-orders', authenticate, getMyOrders);
 router.get('/portfolio', authenticate, getMyPortfolio);
 
-// ─── Admin Routes ─────────────────────────────────────────────────────────────
-
+// Admin Routes
 router.get('/admin/orders', authenticateAdmin, canManageMarket, getAllInvestmentOrdersAdmin);
 router.get('/admin/:investmentId', authenticateAdmin, canManageMarket, getInvestmentByIdAdmin);
 router.patch('/admin/:investmentId/approve', authenticateAdmin, canManageMarket, approveInvestmentOrder);
 router.patch('/admin/:investmentId/reject', authenticateAdmin, canManageMarket, rejectInvestmentOrder);
 router.patch('/admin/:investmentId/rate', authenticateAdmin, canManageMarket, overrideInvestmentRate);
 
-// ─── Unlock / Renew / Reinvest Routes (must come BEFORE dynamic :investmentId) ─
+router.post('/admin/run-interest-job', async (req, res, next) => {
+    const cronSecret = req.headers['x-cron-secret'];
 
+    if (!process.env.INTERNAL_CRON_SECRET) {
+        return res.status(500).json({
+            success: false,
+            message: 'INTERNAL_CRON_SECRET is not configured',
+        });
+    }
+
+    if (cronSecret !== process.env.INTERNAL_CRON_SECRET) {
+        return res.status(401).json({
+            success: false,
+            message: 'Unauthorized cron request',
+        });
+    }
+
+    next();
+}, runInterestJobManually);
+
+// Unlock / Renew / Reinvest
 router.post('/:investmentId/unlock', authenticate, unlockInvestment);
 router.post('/:investmentId/renew', authenticate, renewInvestment);
 router.post('/:investmentId/reinvest', authenticate, reinvestInvestment);
 router.post('/:investmentId/cancel', authenticate, cancelInvestment);
 
-router.post('/admin/run-interest-job', authenticateAdmin, canManageMarket, runInterestJobManually);
-// ─── Dynamic routes last ──────────────────────────────────────────────────────
-
+// Dynamic route last
 router.get('/:investmentId', authenticate, getMyInvestmentById);
 
 export default router;

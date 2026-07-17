@@ -26,7 +26,9 @@ const transactionSchema = new mongoose.Schema(
                 'investment_principal_debit',
                 'investment_interest',
                 'investment_principal_return',
-                'investment_refund'
+                'investment_refund',
+                'investment_unlock',
+                'investment_renew',
             ],
             required: true,
             index: true
