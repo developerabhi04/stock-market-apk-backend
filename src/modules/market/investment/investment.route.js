@@ -35,25 +35,7 @@ router.patch('/admin/:investmentId/approve', authenticateAdmin, canManageMarket,
 router.patch('/admin/:investmentId/reject', authenticateAdmin, canManageMarket, rejectInvestmentOrder);
 router.patch('/admin/:investmentId/rate', authenticateAdmin, canManageMarket, overrideInvestmentRate);
 
-router.post('/admin/run-interest-job', async (req, res, next) => {
-    const cronSecret = req.headers['x-cron-secret'];
-
-    if (!process.env.INTERNAL_CRON_SECRET) {
-        return res.status(500).json({
-            success: false,
-            message: 'INTERNAL_CRON_SECRET is not configured',
-        });
-    }
-
-    if (cronSecret !== process.env.INTERNAL_CRON_SECRET) {
-        return res.status(401).json({
-            success: false,
-            message: 'Unauthorized cron request',
-        });
-    }
-
-    next();
-}, runInterestJobManually);
+router.post('/admin/run-interest-job', authenticateAdmin, canManageMarket, runInterestJobManually);
 
 // Unlock / Renew / Reinvest
 router.post('/:investmentId/unlock', authenticate, unlockInvestment);
