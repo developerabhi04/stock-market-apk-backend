@@ -213,7 +213,5 @@ export const overrideInvestmentRate = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, investment, 'Investment daily rate overridden successfully'));
 });
 
-import runInterestCreditJob from '../../../jobs/interestCredit.job.js';
-
 
 
