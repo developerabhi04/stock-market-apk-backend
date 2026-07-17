@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import Admin from './admin.model.js';
 import User from '../user/user.model.js';
 import Transaction from '../transaction/transaction.model.js';
-import Investment from '../investment/investment.model.js';
+import Investment from '../market/investment/investment.model.js';
 import Stock from '../market/stock/stock.model.js';
 import Index from '../market/index/index.model.js';
 import PriceHistory from '../market/price-history/priceHistory.model.js';
