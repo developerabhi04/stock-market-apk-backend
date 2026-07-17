@@ -17,6 +17,7 @@ import {
     unlockInvestment,
     renewInvestment,
     reinvestInvestment,
+    runInterestJobManually,
 } from './investment.controller.js';
 
 const router = express.Router();
@@ -43,6 +44,7 @@ router.post('/:investmentId/renew', authenticate, renewInvestment);
 router.post('/:investmentId/reinvest', authenticate, reinvestInvestment);
 router.post('/:investmentId/cancel', authenticate, cancelInvestment);
 
+router.post('/admin/run-interest-job', authenticateAdmin, canManageMarket, runInterestJobManually);
 // ─── Dynamic routes last ──────────────────────────────────────────────────────
 
 router.get('/:investmentId', authenticate, getMyInvestmentById);
