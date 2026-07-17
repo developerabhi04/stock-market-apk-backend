@@ -16,6 +16,8 @@ import {
     reinvestInvestmentService,
 } from './investment.service.js';
 
+import runInterestCreditJob from '../../../jobs/interestCredit.job.js';
+
 // ─── User Controllers ────────────────────────────────────────────────────────
 
 export const placeInvestmentOrder = asyncHandler(async (req, res) => {
@@ -215,3 +217,9 @@ export const overrideInvestmentRate = asyncHandler(async (req, res) => {
 
 
 
+export const runInterestJobManually = asyncHandler(async (req, res) => {
+    const result = await runInterestCreditJob();
+    return res
+        .status(200)
+        .json(new ApiResponse(200, result, 'Interest credit job executed manually'));
+});

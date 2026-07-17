@@ -17,6 +17,7 @@ import {
     unlockInvestment,
     renewInvestment,
     reinvestInvestment,
+    runInterestJobManually,
 } from './investment.controller.js';
 
 const router = express.Router();
