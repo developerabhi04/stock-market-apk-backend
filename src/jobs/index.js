@@ -1,78 +1,43 @@
 import cron from 'node-cron';
+import runInterestCreditJob from './interestCredit.job.js';
 import runMarketSyncJob from './marketSync.job.js';
 import runNotificationJob from './notification.job.js';
-import runCleanupJob from './cleanup.job.js';
-import runInterestCreditJob from './interestCredit.job.js';
 
-export const registerJobs = () => {
+export const registerCronJobs = () => {
     console.log('⏰ Registering cron jobs...');
 
-    // Every 15 mins — market sync
     cron.schedule(
-        '*/15 * * * *',
+        '0 8 * * *',
         async () => {
-            try {
-                console.log('⏰ [MarketSyncJob] Triggered');
-                await runMarketSyncJob();
-            } catch (error) {
-                console.error('❌ [MarketSyncJob] Failed:', error?.message || error);
-            }
-        },
-        {
-            noOverlap: true,
-        }
-    );
-
-    // Every 5 mins — notifications
-    cron.schedule(
-        '*/5 * * * *',
-        async () => {
-            try {
-                console.log('⏰ [NotificationJob] Triggered');
-                await runNotificationJob();
-            } catch (error) {
-                console.error('❌ [NotificationJob] Failed:', error?.message || error);
-            }
-        },
-        {
-            noOverlap: true,
-        }
-    );
-
-    // Daily at 2:00 AM — cleanup
-    cron.schedule(
-        '0 2 * * *',
-        async () => {
-            try {
-                console.log('⏰ [CleanupJob] Triggered at 2:00 AM');
-                await runCleanupJob();
-            } catch (error) {
-                console.error('❌ [CleanupJob] Failed:', error?.message || error);
-            }
-        },
-        {
-            noOverlap: true,
-        }
-    );
-
-    // Daily at 4:00 AM IST — interest credit
-    cron.schedule(
-        '0 4 * * *',
-        async () => {
-            try {
-                console.log('⏰ [InterestCreditJob] Triggered at 4:00 AM IST');
-                await runInterestCreditJob();
-            } catch (error) {
-                console.error('❌ [InterestCreditJob] Failed:', error?.message || error);
-            }
+            console.log('⏰ [InterestCreditJob] Triggered');
+            await runInterestCreditJob();
         },
         {
             timezone: 'Asia/Kolkata',
-            noOverlap: true,
+        }
+    );
+
+    cron.schedule(
+        '0 18 * * *',
+        async () => {
+            console.log('⏰ [MarketSyncJob] Triggered');
+            await runMarketSyncJob();
+        },
+        {
+            timezone: 'Asia/Kolkata',
+        }
+    );
+
+    cron.schedule(
+        '55 7,12,18 * * *',
+        async () => {
+            console.log('⏰ [NotificationJob] Triggered');
+            await runNotificationJob();
+        },
+        {
+            timezone: 'Asia/Kolkata',
         }
     );
 
     console.log('✅ Cron jobs registered successfully');
 };
-
-export default registerJobs;
