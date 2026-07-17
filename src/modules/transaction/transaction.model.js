@@ -1,56 +1,60 @@
 import mongoose from 'mongoose';
 
+const TRANSACTION_CATEGORIES = [
+    'add_money',
+    'withdrawal',
+    'trade_buy',
+    'trade_sell',
+    'profit',
+    'loss',
+    'refund',
+    'investment_principal_debit',
+    'investment_interest',
+    'investment_principal_return',
+    'investment_refund',
+    'investment_unlock',
+    'investment_renew',
+    'admin_balance_credit',
+    'admin_balance_debit',
+];
+
 const transactionSchema = new mongoose.Schema(
     {
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
             required: true,
-            index: true
+            index: true,
         },
         type: {
             type: String,
             enum: ['credit', 'debit'],
-            required: true
+            required: true,
         },
         category: {
             type: String,
-            enum: [
-                'add_money',
-                'withdrawal',
-                'trade_buy',
-                'trade_sell',
-                'profit',
-                'loss',
-                'refund',
-                'investment_principal_debit',
-                'investment_interest',
-                'investment_principal_return',
-                'investment_refund',
-                'investment_unlock',
-                'investment_renew',
-            ],
+            enum: TRANSACTION_CATEGORIES,
             required: true,
-            index: true
+            index: true,
         },
         amount: {
             type: Number,
             required: true,
-            min: 0
+            min: 0,
         },
         balanceBefore: {
             type: Number,
-            required: true
+            required: true,
         },
         balanceAfter: {
             type: Number,
-            required: true
+            required: true,
         },
         status: {
             type: String,
             enum: ['pending', 'completed', 'failed', 'cancelled', 'rejected'],
             default: 'pending',
-            index: true
+            index: true,
         },
         paymentDetails: {
             method: String,
@@ -60,11 +64,11 @@ const transactionSchema = new mongoose.Schema(
             gatewayResponse: mongoose.Schema.Types.Mixed,
             verifiedBy: {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: 'Admin'
+                ref: 'Admin',
             },
             verifiedAt: Date,
             verificationNote: String,
-            paymentScreenshot: String
+            paymentScreenshot: String,
         },
         withdrawalDetails: {
             accountNumber: String,
@@ -75,22 +79,22 @@ const transactionSchema = new mongoose.Schema(
             processedAt: Date,
             processedBy: {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: 'Admin'
+                ref: 'Admin',
             },
-            rejectionReason: String
+            rejectionReason: String,
         },
         tradeDetails: {
             orderId: {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: 'Order'
+                ref: 'Order',
             },
             investmentId: {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: 'Investment'
+                ref: 'Investment',
             },
             indexId: {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: 'Index'
+                ref: 'Index',
             },
             stockSymbol: String,
             quantity: Number,
@@ -98,25 +102,35 @@ const transactionSchema = new mongoose.Schema(
             dailyRate: Number,
             dailyInterestAmount: Number,
             creditDate: Date,
-            walletUsed: Number
+            walletUsed: Number,
         },
-        description: String,
+        description: {
+            type: String,
+            trim: true,
+            default: '',
+        },
+        reference: {
+            type: String,
+            trim: true,
+            default: '',
+            index: true,
+        },
         metadata: mongoose.Schema.Types.Mixed,
         adminAction: {
             actionType: {
                 type: String,
-                enum: ['approved', 'rejected', 'pending']
+                enum: ['approved', 'rejected', 'pending'],
             },
             actionBy: {
                 type: mongoose.Schema.Types.ObjectId,
-                ref: 'Admin'
+                ref: 'Admin',
             },
             actionAt: Date,
-            reason: String
-        }
+            reason: String,
+        },
     },
     {
-        timestamps: true
+        timestamps: true,
     }
 );
 
@@ -124,7 +138,9 @@ transactionSchema.index({ userId: 1, createdAt: -1 });
 transactionSchema.index({ userId: 1, category: 1, status: 1 });
 transactionSchema.index({ 'paymentDetails.utrNumber': 1 }, { sparse: true });
 transactionSchema.index({ status: 1, category: 1 });
+transactionSchema.index({ reference: 1 }, { sparse: true });
 
-const Transaction = mongoose.model('Transaction', transactionSchema);
+const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
 
+export { TRANSACTION_CATEGORIES };
 export default Transaction;

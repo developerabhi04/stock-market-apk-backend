@@ -6,7 +6,7 @@ import {
     canManageMarket,
     canManageTransactions,
     canManageUsers,
-    canViewDashboard,
+    canViewDashboard
 } from '../../shared/middleware/checkPermissions.middleware.js';
 
 import {
@@ -32,7 +32,7 @@ import {
     getWithdrawalStats,
     updateAdminRole,
     updateStock,
-    updateUserBalance,
+    updateUserBalance
 } from './admin.controller.js';
 
 const router = express.Router();
@@ -60,11 +60,6 @@ router.get('/admins', isSuperAdmin, getAllAdmins);
 router.put('/admins/:adminId/role', isSuperAdmin, updateAdminRole);
 router.delete('/admins/:adminId', isSuperAdmin, deleteAdmin);
 router.get('/admins/:adminId/activity', isSuperAdmin, getAdminActivity);
-
-// router.get('/indices', canManageMarket, getAllIndicesAdmin);
-// router.post('/indices', canManageMarket, createIndex);
-// router.put('/indices/:id', canManageMarket, updateIndex);
-// router.delete('/indices/:id', canManageMarket, deleteIndex);
 
 router.get('/stocks', canManageMarket, getAllStocksAdmin);
 router.post('/stocks', canManageMarket, createStock);

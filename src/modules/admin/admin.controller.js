@@ -4,7 +4,7 @@ import {
     validateAdminLogin,
     validateBalanceUpdate,
     validateCreateAdmin,
-    validateCreateFirstAdmin
+    validateCreateFirstAdmin,
 } from './admin.validator.js';
 import {
     adminLoginService,
@@ -29,9 +29,8 @@ import {
     getWithdrawalStatsService,
     updateAdminRoleService,
     updateStockService,
-    updateUserBalanceService
+    updateUserBalanceService,
 } from './admin.service.js';
-
 
 export const adminLogin = asyncHandler(async (req, res) => {
     validateAdminLogin(req.body);
@@ -59,7 +58,7 @@ export const getAllAdmins = asyncHandler(async (req, res) => {
 export const deleteAdmin = asyncHandler(async (req, res) => {
     await deleteAdminService({
         adminId: req.params.adminId,
-        currentAdminId: req.admin.adminId
+        currentAdminId: req.admin.adminId,
     });
     res.status(200).json(new ApiResponse(200, null, 'Admin deleted successfully'));
 });
@@ -67,7 +66,7 @@ export const deleteAdmin = asyncHandler(async (req, res) => {
 export const updateAdminRole = asyncHandler(async (req, res) => {
     const data = await updateAdminRoleService({
         adminId: req.params.adminId,
-        role: req.body.role
+        role: req.body.role,
     });
     res.status(200).json(new ApiResponse(200, data, data.message));
 });
@@ -116,7 +115,7 @@ export const updateUserBalance = asyncHandler(async (req, res) => {
     validateBalanceUpdate(req.body);
     const data = await updateUserBalanceService({
         ...req.body,
-        adminId: req.admin.adminId
+        adminId: req.admin.adminId,
     });
     res.status(200).json(new ApiResponse(200, data, data.message));
 });
@@ -124,29 +123,6 @@ export const updateUserBalance = asyncHandler(async (req, res) => {
 export const getMarketDashboardStats = asyncHandler(async (req, res) => {
     const data = await getMarketDashboardStatsService();
     res.status(200).json(new ApiResponse(200, data, 'Market dashboard stats fetched successfully'));
-});
-
-export const getAllIndicesAdmin = asyncHandler(async (req, res) => {
-    const data = await getAllIndicesAdminService(req.query);
-    res.status(200).json(new ApiResponse(200, data, 'Indices fetched successfully'));
-});
-
-export const createIndex = asyncHandler(async (req, res) => {
-    const data = await createIndexService(req.body);
-    res.status(201).json(new ApiResponse(201, data, 'Index created successfully'));
-});
-
-export const updateIndex = asyncHandler(async (req, res) => {
-    const data = await updateIndexService({
-        id: req.params.id,
-        updateData: req.body
-    });
-    res.status(200).json(new ApiResponse(200, data, 'Index updated successfully'));
-});
-
-export const deleteIndex = asyncHandler(async (req, res) => {
-    await deleteIndexService({ id: req.params.id });
-    res.status(200).json(new ApiResponse(200, null, 'Index and related data deleted successfully'));
 });
 
 export const getAllStocksAdmin = asyncHandler(async (req, res) => {
@@ -162,7 +138,7 @@ export const createStock = asyncHandler(async (req, res) => {
 export const updateStock = asyncHandler(async (req, res) => {
     const data = await updateStockService({
         id: req.params.id,
-        updateData: req.body
+        updateData: req.body,
     });
     res.status(200).json(new ApiResponse(200, data, 'Stock updated successfully'));
 });
@@ -184,41 +160,14 @@ export const generateSampleChartData = asyncHandler(async (req, res) => {
 
 export const generateSampleDailyHistory = asyncHandler(async (req, res) => {
     const data = await generateSampleDailyHistoryService(req.body);
-    res.status(201).json(new ApiResponse(201, {
-        count: Array.isArray(data) ? data.length : 0,
-        histories: data
-    }, 'Sample daily history generated successfully'));
-});
-
-
-
-export const getActiveCategories = asyncHandler(async (req, res) => {
-    const data = await getActiveCategoriesService();
-    res.status(200).json(new ApiResponse(200, data));
-});
-
-export const createCategory = asyncHandler(async (req, res) => {
-    const data = await createCategoryService({
-        payload: req.body,
-        adminId: req.admin.adminId
-    });
-    res.status(201).json(new ApiResponse(201, data, 'Category created successfully'));
-});
-
-export const updateCategory = asyncHandler(async (req, res) => {
-    const data = await updateCategoryService({
-        id: req.params.id,
-        payload: req.body
-    });
-    res.status(200).json(new ApiResponse(200, data, 'Category updated successfully'));
-});
-
-export const deleteCategory = asyncHandler(async (req, res) => {
-    await deleteCategoryService({ id: req.params.id });
-    res.status(200).json(new ApiResponse(200, null, 'Category deleted successfully'));
-});
-
-export const getCategoryStats = asyncHandler(async (req, res) => {
-    const data = await getCategoryStatsService();
-    res.status(200).json(new ApiResponse(200, data));
+    res.status(201).json(
+        new ApiResponse(
+            201,
+            {
+                count: Array.isArray(data) ? data.length : 0,
+                histories: data,
+            },
+            'Sample daily history generated successfully'
+        )
+    );
 });

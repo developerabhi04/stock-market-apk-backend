@@ -20,111 +20,115 @@ const maskAccountNumber = (accountNumber = '') => {
 
 const normalizeBankAccounts = (bankAccounts = []) => {
     return bankAccounts.map((account) => {
-        const normalized = account?.toObject ? account.toObject() : account;
+        const item = account?.toObject ? account.toObject() : account;
         return {
-            ...normalized,
-            maskedAccountNumber: maskAccountNumber(normalized?.accountNumber),
+            ...item,
+            maskedAccountNumber: maskAccountNumber(item?.accountNumber),
         };
     });
 };
 
 const buildPortfolioSummary = (investments = []) => {
-    const activeStatuses = ['active', 'approved', 'running'];
-    const completedStatuses = ['completed', 'unlocked', 'closed_reinvested', 'closed'];
-    const cancelledStatuses = ['cancelled', 'rejected', 'failed'];
-
-    let totalInvested = 0;
-    let currentValue = 0;
-    let totalPnL = 0;
-    let todayPnL = 0;
-
+    let totalInvestments = investments.length;
     let activeInvestments = 0;
     let completedInvestments = 0;
+    let unlockedInvestments = 0;
     let cancelledInvestments = 0;
+    let rejectedInvestments = 0;
+
+    let totalPrincipalInvested = 0;
+    let totalInterestEarned = 0;
+    let totalDailyEarning = 0;
+    let totalCurrentValue = 0;
 
     for (const item of investments) {
         const status = String(item.status || '').toLowerCase();
         const amount = safeNumber(item.amount);
-        const totalInterestEarned = safeNumber(item.totalInterestEarned);
-        const dailyInterestAmount = safeNumber(item.dailyInterestAmount || item.dailyReturn);
+        const interest = safeNumber(item.totalInterestEarned);
+        const daily = safeNumber(item.dailyInterestAmount);
+        const currentValue = safeNumber(item.currentValueSnapshot) || amount + interest;
 
-        if (activeStatuses.includes(status)) {
+        if (status === 'active') {
             activeInvestments += 1;
-            totalInvested += amount;
-            currentValue += amount + totalInterestEarned;
-            totalPnL += totalInterestEarned;
-            todayPnL += dailyInterestAmount;
-        } else if (completedStatuses.includes(status)) {
+            totalPrincipalInvested += amount;
+            totalInterestEarned += interest;
+            totalDailyEarning += daily;
+            totalCurrentValue += currentValue;
+        }
+
+        if (status === 'completed' || status === 'closed_reinvested') {
             completedInvestments += 1;
-        } else if (cancelledStatuses.includes(status)) {
+        }
+
+        if (status === 'unlocked') {
+            unlockedInvestments += 1;
+            totalPrincipalInvested += amount;
+            totalInterestEarned += interest;
+            totalCurrentValue += currentValue;
+        }
+
+        if (status === 'cancelled') {
             cancelledInvestments += 1;
+        }
+
+        if (status === 'rejected') {
+            rejectedInvestments += 1;
         }
     }
 
     return {
-        totalInvested,
-        totalPrincipalInvested: totalInvested,
-        currentValue,
-        totalCurrentValue: currentValue,
-        totalPnL,
-        totalInterestEarned: totalPnL,
-        totalPnLPercent: totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0,
-        todayPnL,
-        totalDailyEarning: todayPnL,
-        todayPnLPercent: totalInvested > 0 ? (todayPnL / totalInvested) * 100 : 0,
+        totalInvestments,
         activeInvestments,
         completedInvestments,
+        unlockedInvestments,
         cancelledInvestments,
-        totalInvestments: investments.length,
+        rejectedInvestments,
+        totalPrincipalInvested,
+        totalInterestEarned,
+        totalDailyEarning,
+        totalCurrentValue,
     };
 };
 
 const buildInvestmentOrders = (investments = []) => {
-    const mapped = investments.map((item, index) => {
-        const quantity = safeNumber(item.quantity || item.units || 1);
-        const totalAmount = safeNumber(item.totalAmount || item.amount);
-        const price =
-            safeNumber(item.price || item.unitPrice) ||
-            (quantity > 0 ? totalAmount / quantity : totalAmount);
-
-        return {
-            _id: item._id || `order-${index}`,
-            orderId: item.orderId || item._id,
-            type: item.type || item.action || 'buy',
-            indexName:
-                item.indexName ||
-                item.indexSnapshot?.name ||
-                item.index?.name ||
-                item.indexId?.name ||
-                item.planName ||
-                '-',
-            symbol:
-                item.symbol ||
-                item.indexSnapshot?.symbol ||
-                item.index?.symbol ||
-                item.indexId?.symbol ||
-                '',
-            quantity,
-            price,
-            totalAmount,
-            orderDate: item.orderDate || item.orderPlacedAt || item.createdAt || null,
-            status: item.status || 'pending',
-            reason: item.reason || item.rejectionReason || '',
-        };
-    });
+    const mapped = investments.map((item) => ({
+        _id: item._id,
+        orderId: item.orderNumber || item._id,
+        type: 'buy',
+        indexName: item.indexSnapshot?.name || item.indexId?.name || '',
+        symbol: item.indexSnapshot?.symbol || item.indexId?.symbol || '',
+        logoUrl: item.indexSnapshot?.logoUrl || item.indexId?.logoUrl || '',
+        quantity: 1,
+        price: safeNumber(item.amount),
+        totalAmount: safeNumber(item.amount),
+        orderDate: item.orderPlacedAt || item.createdAt,
+        status: item.status,
+        reason: item.rejectionReason || item.adminRemark || '',
+        amount: safeNumber(item.amount),
+        totalInterestEarned: safeNumber(item.totalInterestEarned),
+        dailyInterestAmount: safeNumber(item.dailyInterestAmount),
+        currentValueSnapshot: safeNumber(item.currentValueSnapshot),
+        minimumInvestment: safeNumber(item.minimumInvestment),
+        lockPeriodDays: safeNumber(item.lockPeriodDays),
+        daysCompleted: safeNumber(item.daysCompleted),
+        daysRemaining: safeNumber(item.daysRemaining),
+        isLockCompleted: !!item.isLockCompleted,
+        approvedAt: item.approvedAt || null,
+        rejectedAt: item.rejectedAt || null,
+        unlockedAt: item.unlockedAt || null,
+        completedAt: item.completedAt || null,
+        createdAt: item.createdAt,
+    }));
 
     return {
-        pending: mapped.filter((item) =>
-            ['pending', 'processing', 'initiated'].includes(String(item.status).toLowerCase())
-        ),
+        pending: mapped.filter((item) => item.status === 'pending'),
+        active: mapped.filter((item) => item.status === 'active'),
+        unlocked: mapped.filter((item) => item.status === 'unlocked'),
         completed: mapped.filter((item) =>
-            ['completed', 'active', 'approved', 'unlocked', 'closed_reinvested'].includes(
-                String(item.status).toLowerCase()
-            )
+            ['completed', 'closed_reinvested'].includes(item.status)
         ),
-        cancelled: mapped.filter((item) =>
-            ['cancelled', 'rejected', 'failed'].includes(String(item.status).toLowerCase())
-        ),
+        cancelled: mapped.filter((item) => ['cancelled', 'rejected'].includes(item.status)),
+        all: mapped,
     };
 };
 
@@ -322,8 +326,14 @@ export const updateAdminRoleService = async ({ adminId, role }) => {
 
 export const getDashboardStatsService = async () => {
     const totalUsers = await User.countDocuments({ isActive: true });
-    const pendingPayments = await Transaction.countDocuments({ category: 'add_money', status: 'pending' });
-    const pendingWithdrawals = await Transaction.countDocuments({ category: 'withdrawal', status: 'pending' });
+    const pendingPayments = await Transaction.countDocuments({
+        category: 'add_money',
+        status: 'pending',
+    });
+    const pendingWithdrawals = await Transaction.countDocuments({
+        category: 'withdrawal',
+        status: 'pending',
+    });
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -359,19 +369,33 @@ export const getCompleteDashboardStatsService = async () => {
         createdAt: { $gte: start },
     });
 
-    const users = await User.find({ isActive: true }).select('walletBalance bonusBalance').lean();
-    const totalWalletBalance = users.reduce((sum, user) => sum + safeNumber(user.walletBalance), 0);
-    const totalBonusBalance = users.reduce((sum, user) => sum + safeNumber(user.bonusBalance), 0);
+    const walletTotals = await User.aggregate([
+        { $match: { isActive: true } },
+        {
+            $group: {
+                _id: null,
+                totalWalletBalance: { $sum: { $ifNull: ['$walletBalance', 0] } },
+            },
+        },
+    ]);
 
-    const pendingPayments = await Transaction.countDocuments({ category: 'add_money', status: 'pending' });
-    const pendingWithdrawals = await Transaction.countDocuments({ category: 'withdrawal', status: 'pending' });
+    const totalWalletBalance = safeNumber(walletTotals[0]?.totalWalletBalance);
+
+    const pendingPayments = await Transaction.countDocuments({
+        category: 'add_money',
+        status: 'pending',
+    });
+    const pendingWithdrawals = await Transaction.countDocuments({
+        category: 'withdrawal',
+        status: 'pending',
+    });
 
     const completedWithdrawals = await Transaction.aggregate([
         { $match: { category: 'withdrawal', status: 'completed' } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
 
-    const totalWithdrawals = completedWithdrawals[0]?.total || 0;
+    const totalWithdrawals = safeNumber(completedWithdrawals[0]?.total);
 
     const totalIndices = await Index.countDocuments({ isActive: true });
     const totalStocks = await Stock.countDocuments({ isActive: true });
@@ -400,10 +424,8 @@ export const getCompleteDashboardStatsService = async () => {
         },
         financial: {
             totalWalletBalance,
-            totalBonusBalance,
-            grandTotal: totalWalletBalance + totalBonusBalance,
             totalWithdrawals,
-            netBalance: totalWalletBalance + totalBonusBalance - totalWithdrawals,
+            netBalance: totalWalletBalance - totalWithdrawals,
         },
         transactions: {
             pendingPayments,
@@ -421,7 +443,12 @@ export const getCompleteDashboardStatsService = async () => {
     };
 };
 
-export const getAllTransactionsService = async ({ page = 1, limit = 50, status, category }) => {
+export const getAllTransactionsService = async ({
+    page = 1,
+    limit = 50,
+    status,
+    category,
+}) => {
     const filter = {};
     if (status) filter.status = status;
     if (category) filter.category = category;
@@ -430,7 +457,7 @@ export const getAllTransactionsService = async ({ page = 1, limit = 50, status, 
     const limitNum = Number(limit);
 
     const transactions = await Transaction.find(filter)
-        .populate('userId', 'fullName phoneNumber')
+        .populate('userId', 'fullName phoneNumber countryCode')
         .sort({ createdAt: -1 })
         .limit(limitNum)
         .skip((pageNum - 1) * limitNum)
@@ -459,17 +486,27 @@ export const getAllUsersService = async ({
         filter.$or = [
             { fullName: { $regex: search, $options: 'i' } },
             { phoneNumber: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } },
         ];
     }
 
-    const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 };
+    const allowedSortFields = [
+        'createdAt',
+        'fullName',
+        'walletBalance',
+        'lastLogin',
+        'kycStatus',
+        'isVerified',
+    ];
+
+    const safeSortBy = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    const sort = { [safeSortBy]: sortOrder === 'asc' ? 1 : -1 };
+
     const pageNum = Number(page);
     const limitNum = Number(limit);
 
     const users = await User.find(filter)
         .select(
-            'fullName email phoneNumber walletBalance bonusBalance totalBalance kycStatus isVerified createdAt lastLogin'
+            'fullName phoneNumber countryCode walletBalance kycStatus isVerified createdAt lastLogin bankAccounts bankDetails isActive'
         )
         .sort(sort)
         .limit(limitNum)
@@ -478,30 +515,22 @@ export const getAllUsersService = async ({
 
     const count = await User.countDocuments(filter);
 
-    const balanceStats = await User.aggregate([
-        { $match: filter },
+    const walletTotals = await User.aggregate([
+        { $match: { isActive: true } },
         {
             $group: {
                 _id: null,
-                totalWalletBalance: { $sum: '$walletBalance' },
-                totalBonusBalance: { $sum: '$bonusBalance' },
+                totalWalletBalance: { $sum: { $ifNull: ['$walletBalance', 0] } },
             },
         },
     ]);
-
-    const totals = balanceStats[0] || {
-        totalWalletBalance: 0,
-        totalBonusBalance: 0,
-    };
 
     return {
         users,
         totalPages: Math.ceil(count / limitNum),
         currentPage: pageNum,
         totalUsers: count,
-        totalWalletBalance: safeNumber(totals.totalWalletBalance),
-        totalBonusBalance: safeNumber(totals.totalBonusBalance),
-        grandTotal: safeNumber(totals.totalWalletBalance) + safeNumber(totals.totalBonusBalance),
+        totalWalletBalance: safeNumber(walletTotals[0]?.totalWalletBalance),
     };
 };
 
@@ -510,10 +539,23 @@ export const getUserDetailsService = async ({ userId }) => {
         throw new ApiError(400, 'Invalid user id');
     }
 
-    const [user, recentTransactions, investments] = await Promise.all([
+    const [user, investments, recentTransactions, transactionStats] = await Promise.all([
         User.findById(userId).select('-__v').lean(),
-        Transaction.find({ userId }).sort({ createdAt: -1 }).limit(50).lean(),
-        Investment.find({ userId }).sort({ createdAt: -1 }).lean(),
+        Investment.find({ userId })
+            .populate('indexId', 'name symbol logoUrl currentValue')
+            .sort({ createdAt: -1 })
+            .lean(),
+        Transaction.find({ userId }).sort({ createdAt: -1 }).limit(20).lean(),
+        Transaction.aggregate([
+            { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+            {
+                $group: {
+                    _id: '$category',
+                    count: { $sum: 1 },
+                    totalAmount: { $sum: '$amount' },
+                },
+            },
+        ]),
     ]);
 
     if (!user) {
@@ -521,66 +563,38 @@ export const getUserDetailsService = async ({ userId }) => {
     }
 
     const normalizedUser = {
-        _id: user._id,
+        ...user,
         id: user._id,
-        fullName: user.fullName,
-        email: user.email || '',
-        phoneNumber: user.phoneNumber,
-        countryCode: user.countryCode,
         walletBalance: safeNumber(user.walletBalance),
-        bonusBalance: safeNumber(user.bonusBalance),
-        totalBalance:
-            user.totalBalance !== undefined
-                ? safeNumber(user.totalBalance)
-                : safeNumber(user.walletBalance) + safeNumber(user.bonusBalance),
-        isVerified: !!user.isVerified,
-        isActive: user.isActive !== false,
-        kycStatus: user.kycStatus || 'not_started',
-        panCard: user.panCard || '',
-        bankDetails: user.bankDetails || null,
         bankAccounts: normalizeBankAccounts(user.bankAccounts || []),
-        lastLogin: user.lastLogin || null,
-        createdAt: user.createdAt,
+        primaryBankAccount:
+            normalizeBankAccounts(user.bankAccounts || []).find((account) => account.isPrimary) ||
+            normalizeBankAccounts(user.bankAccounts || [])[0] ||
+            null,
     };
-
-    const normalizedTransactions = recentTransactions.map((txn) => ({
-        ...txn,
-        amount: safeNumber(txn.amount),
-    }));
 
     const normalizedInvestments = investments.map((item) => ({
         ...item,
         amount: safeNumber(item.amount),
-        totalAmount: safeNumber(item.totalAmount || item.amount),
-        quantity: safeNumber(item.quantity || item.units || 1),
+        minimumInvestment: safeNumber(item.minimumInvestment),
+        lockPeriodDays: safeNumber(item.lockPeriodDays),
+        daysCompleted: safeNumber(item.daysCompleted),
+        daysRemaining: safeNumber(item.daysRemaining),
         totalInterestEarned: safeNumber(item.totalInterestEarned),
-        dailyInterestAmount: safeNumber(item.dailyInterestAmount || item.dailyReturn),
-        currentValue:
-            safeNumber(item.currentValue) ||
-            safeNumber(item.amount) + safeNumber(item.totalInterestEarned),
+        currentValueSnapshot: safeNumber(item.currentValueSnapshot),
+        dailyInterestAmount: safeNumber(item.dailyInterestAmount),
     }));
 
     const portfolioSummary = buildPortfolioSummary(normalizedInvestments);
     const investmentOrders = buildInvestmentOrders(normalizedInvestments);
 
-    const transactionStats = await Transaction.aggregate([
-        { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-        {
-            $group: {
-                _id: '$category',
-                count: { $sum: 1 },
-                totalAmount: { $sum: '$amount' },
-            },
-        },
-    ]);
-
     return {
         user: normalizedUser,
-        recentTransactions: normalizedTransactions,
         investments: normalizedInvestments,
         portfolioSummary,
         investmentOrders,
         transactionStats,
+        recentTransactions,
     };
 };
 
@@ -589,35 +603,33 @@ export const updateUserBalanceService = async ({ userId, amount, type, reason, a
         throw new ApiError(400, 'Invalid user id');
     }
 
+    const parsedAmount = Number(amount);
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+        throw new ApiError(400, 'Amount must be greater than 0');
+    }
+
+    if (!['add', 'deduct'].includes(type)) {
+        throw new ApiError(400, 'Type must be add or deduct');
+    }
+
     const session = await mongoose.startSession();
-    session.startTransaction({
-        readPreference: 'primary',
-        readConcern: { level: 'majority' },
-        writeConcern: { w: 'majority' },
-    });
 
     try {
-        const user = await User.findById(userId).session(session);
+        session.startTransaction({
+            readPreference: 'primary',
+            readConcern: { level: 'majority' },
+            writeConcern: { w: 'majority' },
+        });
 
+        const user = await User.findById(userId).session(session);
         if (!user) {
             throw new ApiError(404, 'User not found');
         }
 
-        const parsedAmount = Number(amount || 0);
-        if (parsedAmount <= 0) {
-            throw new ApiError(400, 'Amount must be greater than 0');
-        }
-
-        const normalizedType = String(type || '').toLowerCase();
-        if (!['add', 'deduct'].includes(normalizedType)) {
-            throw new ApiError(400, 'Invalid balance update type');
-        }
-
         const balanceBefore = safeNumber(user.walletBalance);
-        const bonusBalance = safeNumber(user.bonusBalance);
         let balanceAfter = balanceBefore;
 
-        if (normalizedType === 'add') {
+        if (type === 'add') {
             balanceAfter = balanceBefore + parsedAmount;
         } else {
             if (balanceBefore < parsedAmount) {
@@ -627,36 +639,30 @@ export const updateUserBalanceService = async ({ userId, amount, type, reason, a
         }
 
         user.walletBalance = balanceAfter;
-
-        if (user.totalBalance !== undefined) {
-            user.totalBalance = balanceAfter + bonusBalance;
-        }
-
         await user.save({ session });
 
         await Transaction.create(
             [
                 {
                     userId: user._id,
-                    type: normalizedType === 'add' ? 'credit' : 'debit',
-                    category:
-                        normalizedType === 'add' ? 'admin_balance_credit' : 'admin_balance_debit',
+                    type: type === 'add' ? 'credit' : 'debit',
+                    category: type === 'add' ? 'admin_balance_credit' : 'admin_balance_debit',
                     amount: parsedAmount,
                     balanceBefore,
                     balanceAfter,
                     status: 'completed',
-                    description: `Manual balance ${normalizedType} by admin: ${reason}`,
+                    description: `Manual wallet balance ${type} by admin: ${reason}`,
+                    metadata: {
+                        reason,
+                        affectedWallet: 'walletBalance',
+                    },
                     adminAction: {
                         actionType: 'approved',
                         actionBy: adminId,
                         actionAt: new Date(),
                         reason,
                     },
-                    metadata: {
-                        reason,
-                        updatedByAdmin: adminId,
-                    },
-                    reference: `ADMIN-${Date.now()}`,
+                    reference: `ADMIN-BAL-${Date.now()}-${user._id}`,
                 },
             ],
             { session }
@@ -666,24 +672,19 @@ export const updateUserBalanceService = async ({ userId, amount, type, reason, a
 
         return {
             user: {
-                _id: user.id,
                 id: user.id,
                 fullName: user.fullName,
                 phoneNumber: user.phoneNumber,
                 walletBalance: balanceAfter,
-                bonusBalance,
-                totalBalance: balanceAfter + bonusBalance,
                 newWalletBalance: balanceAfter,
-                newBonusBalance: bonusBalance,
-                newTotalBalance: balanceAfter + bonusBalance,
             },
-            message: `Balance ${normalizedType === 'add' ? 'added' : 'deducted'} successfully`,
+            message: `Balance ${type === 'add' ? 'added' : 'deducted'} successfully`,
         };
     } catch (error) {
         await session.abortTransaction();
         throw error;
     } finally {
-        session.endSession();
+        await session.endSession();
     }
 };
 
@@ -697,16 +698,14 @@ export const getUserStatsService = async () => {
         {
             $group: {
                 _id: null,
-                totalWalletBalance: { $sum: '$walletBalance' },
-                totalBonusBalance: { $sum: '$bonusBalance' },
-                avgWalletBalance: { $avg: '$walletBalance' },
+                totalWalletBalance: { $sum: { $ifNull: ['$walletBalance', 0] } },
+                avgWalletBalance: { $avg: { $ifNull: ['$walletBalance', 0] } },
             },
         },
     ]);
 
     const stats = walletStats[0] || {
         totalWalletBalance: 0,
-        totalBonusBalance: 0,
         avgWalletBalance: 0,
     };
 
@@ -715,8 +714,6 @@ export const getUserStatsService = async () => {
         verifiedUsers,
         kycPendingUsers,
         totalWalletBalance: safeNumber(stats.totalWalletBalance),
-        totalBonusBalance: safeNumber(stats.totalBonusBalance),
-        grandTotal: safeNumber(stats.totalWalletBalance) + safeNumber(stats.totalBonusBalance),
         avgWalletBalance: safeNumber(stats.avgWalletBalance),
     };
 };
