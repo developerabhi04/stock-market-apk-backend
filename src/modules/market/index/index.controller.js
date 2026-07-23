@@ -4,6 +4,7 @@ import {
   getAllIndicesService,
   getPublicIndicesService,
   getFeaturedIndicesService,
+  getIndexByIdService,
   getIndexBySymbolService,
   createIndexService,
   updateIndexService,
@@ -35,6 +36,14 @@ export const getFeaturedIndices = asyncHandler(async (req, res) => {
       { indices },
       'Featured indices fetched successfully'
     )
+  );
+});
+
+export const getIndexById = asyncHandler(async (req, res) => {
+  const data = await getIndexByIdService({ id: req.params.id });
+
+  res.status(200).json(
+    new ApiResponse(200, data, 'Index fetched successfully')
   );
 });
 

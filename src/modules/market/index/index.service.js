@@ -275,6 +275,22 @@ export const getFeaturedIndicesService = async () => {
   return indices.map(mapIndexResponse);
 };
 
+export const getIndexByIdService = async ({ id }) => {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new ApiError(400, 'Invalid index id');
+  }
+
+  const index = await Index.findOne({ _id: id, isActive: true })
+    .populate('category', 'name slug color icon displayOrder isActive')
+    .lean({ virtuals: true });
+
+  if (!index) {
+    throw new ApiError(404, 'Index not found');
+  }
+
+  return mapIndexResponse(index);
+};
+
 export const getIndexBySymbolService = async ({ symbol }) => {
   const normalizedSymbol = normalizeString(symbol, 'Symbol');
 
