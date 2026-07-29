@@ -7,6 +7,7 @@ import Index from '../market/index/index.model.js';
 import PriceHistory from '../market/price-history/priceHistory.model.js';
 import DailyHistory from '../market/daily-history/dailyHistory.model.js';
 import { generateToken } from '../../shared/utils/jwtService.js';
+import Investment from '../../modules/market/investment/investment.model.js';
 import { ApiError } from '../../shared/utils/apiError.js';
 
 export const createAdminService = async (payload, currentAdmin) => {
@@ -354,8 +355,38 @@ export const getAllUsersService = async ({
     const count = await User.countDocuments(filter);
     const totalWalletBalance = users.reduce((sum, user) => sum + (user.walletBalance || 0), 0);
 
+    const userIds = users.map((u) => u._id);
+
+    const investmentAgg = await Investment.aggregate([
+        { $match: { userId: { $in: userIds } } },
+        {
+            $group: {
+                _id: '$userId',
+                totalInvested: { $sum: '$amount' },
+                totalInterestEarned: { $sum: '$totalInterestEarned' },
+                ordersCount: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const investmentMap = {};
+    investmentAgg.forEach((row) => {
+        investmentMap[String(row._id)] = {
+            totalInvested: row.totalInvested || 0,
+            totalInterestEarned: row.totalInterestEarned || 0,
+            ordersCount: row.ordersCount || 0
+        };
+    });
+
+    const enrichedUsers = users.map((user) => ({
+        ...user,
+        totalInvested: investmentMap[String(user._id)]?.totalInvested || 0,
+        totalInterestEarned: investmentMap[String(user._id)]?.totalInterestEarned || 0,
+        ordersCount: investmentMap[String(user._id)]?.ordersCount || 0
+    }));
+
     return {
-        users,
+        users: enrichedUsers,
         totalPages: Math.ceil(count / limitNum),
         currentPage: pageNum,
         totalUsers: count,
@@ -386,10 +417,50 @@ export const getUserDetailsService = async ({ userId }) => {
         .limit(10)
         .lean();
 
+    const investments = await Investment.find({ userId })
+        .populate('indexId', 'name symbol logoUrl')
+        .sort({ createdAt: -1 })
+        .lean();
+
+    const portfolioSummary = investments.reduce(
+        (acc, inv) => {
+            acc.totalInvested += inv.amount || 0;
+            acc.totalInterestEarned += inv.totalInterestEarned || 0;
+            acc.totalOrders += 1;
+            if (inv.status === 'active') acc.activeCount += 1;
+            if (inv.status === 'completed') acc.completedCount += 1;
+            return acc;
+        },
+        {
+            totalInvested: 0,
+            totalInterestEarned: 0,
+            totalOrders: 0,
+            activeCount: 0,
+            completedCount: 0
+        }
+    );
+
+    const investmentOrders = {
+        pending: investments.filter((i) => i.status === 'pending'),
+        active: investments.filter((i) => i.status === 'active'),
+        unlocked: investments.filter((i) => i.status === 'unlocked'),
+        completed: investments.filter((i) => i.status === 'completed'),
+        cancelled: investments.filter((i) => i.status === 'cancelled'),
+        all: investments
+    };
+
     return {
-        user,
+        user: {
+            ...user,
+            totalInvested: portfolioSummary.totalInvested,
+            totalInterestEarned: portfolioSummary.totalInterestEarned,
+            ordersCount: portfolioSummary.totalOrders
+        },
         transactionStats,
-        recentTransactions
+        recentTransactions,
+        investments,
+        portfolioSummary,
+        investmentOrders
     };
 };
 
@@ -486,12 +557,32 @@ export const getUserStatsService = async () => {
         avgWalletBalance: 0
     };
 
+    const investmentStats = await Investment.aggregate([
+        {
+            $group: {
+                _id: null,
+                totalInvested: { $sum: '$amount' },
+                totalInterestEarned: { $sum: '$totalInterestEarned' },
+                totalOrders: { $sum: 1 }
+            }
+        }
+    ]);
+
+    const invStats = investmentStats[0] || {
+        totalInvested: 0,
+        totalInterestEarned: 0,
+        totalOrders: 0
+    };
+
     return {
         totalUsers,
         verifiedUsers,
         kycPendingUsers,
         totalWalletBalance: stats.totalWalletBalance,
-        avgWalletBalance: stats.avgWalletBalance
+        avgWalletBalance: stats.avgWalletBalance,
+        totalInvested: invStats.totalInvested,
+        totalInterestEarned: invStats.totalInterestEarned,
+        totalOrders: invStats.totalOrders
     };
 };
 
