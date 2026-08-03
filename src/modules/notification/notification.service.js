@@ -1,6 +1,48 @@
 import Notification from './notification.model.js';
 import User from '../user/user.model.js';
 import { ApiError } from '../../shared/utils/apiError.js';
+import { getSocketInstance } from './socket.js';
+import { sendPushNotification } from '../../shared/utils/firebase.js';
+
+
+// ✅ NEW: Central function — call this anywhere a user needs to be notified in real time
+export const notifyUser = async ({ userId, title, message, type = 'general', data = {} }) => {
+    // 1. Save to DB so it shows up in notification history/inbox
+    const notification = await Notification.create({
+        title,
+        message,
+        type,
+        recipients: 'individual',
+        userId,
+        sentBy: data.adminId || null,
+    });
+
+    // 2. Real-time Socket.IO emit — instant update if app is open
+    const io = getSocketInstance();
+    if (io) {
+        io.to(userId.toString()).emit('notification', {
+            _id: notification._id,
+            title,
+            message,
+            type,
+            data,
+            createdAt: notification.createdAt,
+        });
+    }
+
+    // 3. FCM push — reaches user even if app is closed/backgrounded
+    const user = await User.findById(userId).select('fcmToken').lean();
+    if (user?.fcmToken) {
+        await sendPushNotification({
+            token: user.fcmToken,
+            title,
+            body: message,
+            data: { type, ...data },
+        });
+    }
+
+    return notification;
+};
 
 const validateNotificationPayload = ({ title, message }) => {
     if (!title || !message) {

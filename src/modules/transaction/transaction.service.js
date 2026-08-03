@@ -102,6 +102,16 @@ export const approvePaymentService = async ({ transactionId, verificationNote, a
         await transaction.save({ session });
         await session.commitTransaction();
 
+        // ✅ NEW: Notify user instantly — deposit success
+        await notifyUser({
+            userId: transaction.userId,
+            title: 'Deposit Successful ✅',
+            message: `Your deposit of ₹${transaction.amount.toLocaleString('en-IN')} was successful and added to your wallet.`,
+            type: 'payment',
+            data: { transactionId: transaction._id.toString(), amount: transaction.amount, status: 'approved' },
+        });
+
+
         return {
             transaction,
             newBalance: balanceAfter,
@@ -140,6 +150,15 @@ export const rejectPaymentService = async ({ transactionId, reason, adminId }) =
     transaction.description = `Payment rejected: ${reason}`;
 
     await transaction.save();
+
+    // ✅ NEW: Notify user instantly — deposit rejected with reason
+    await notifyUser({
+        userId: transaction.userId,
+        title: 'Deposit Rejected ❌',
+        message: `Your deposit of ₹${transaction.amount.toLocaleString('en-IN')} was rejected. Reason: ${reason}`,
+        type: 'payment',
+        data: { transactionId: transaction._id.toString(), amount: transaction.amount, status: 'rejected', reason },
+    });
 
     return {
         transaction,
@@ -184,6 +203,16 @@ export const approveWithdrawalService = async ({
     transaction.description = `Withdrawal completed - UTR: ${utrNumber}`;
 
     await transaction.save();
+
+    // ✅ NEW: Notify user instantly — withdrawal success
+    await notifyUser({
+        userId: transaction.userId._id,
+        title: 'Withdrawal Successful ✅',
+        message: `Your withdrawal of ₹${transaction.amount.toLocaleString('en-IN')} has been processed. UTR: ${utrNumber}`,
+        type: 'withdrawal',
+        data: { transactionId: transaction._id.toString(), amount: transaction.amount, status: 'approved', utrNumber },
+    });
+
 
     return {
         transaction,
@@ -239,6 +268,16 @@ export const rejectWithdrawalService = async ({ transactionId, reason, adminId }
 
         await transaction.save({ session });
         await session.commitTransaction();
+
+        // ✅ NEW: Notify user instantly — withdrawal rejected + refund note
+        await notifyUser({
+            userId: transaction.userId,
+            title: 'Withdrawal Rejected ❌',
+            message: `Your withdrawal of ₹${transaction.amount.toLocaleString('en-IN')} was rejected. Reason: ${reason}. The amount has been refunded to your wallet.`,
+            type: 'withdrawal',
+            data: { transactionId: transaction._id.toString(), amount: transaction.amount, status: 'rejected', reason },
+        });
+
 
         return {
             transaction,

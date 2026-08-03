@@ -45,6 +45,10 @@ const userSchema = new mongoose.Schema(
             enum: ['pending', 'submitted', 'verified', 'rejected'],
             default: 'pending'
         },
+        fcmToken: {
+            type: String,
+            default: null,
+        },
         panCard: {
             number: String,
             documentUrl: String,
