@@ -18,6 +18,7 @@ router.use(authenticate);
 
 router.get('/profile', getUserProfile);
 router.put('/profile', updateUserProfile);
+router.put('/fcm-token', authenticate, updateFcmToken)
 
 router.get('/check-phone/:phoneNumber', checkPhoneExists);
 

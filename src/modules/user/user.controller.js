@@ -12,6 +12,10 @@ import {
     setPrimaryBankAccountService
 } from './user.service.js';
 
+import { updateFcmTokenService } from './user.service.js';
+
+
+
 const getAuthenticatedUserId = (req) => {
     const userId = req.user?._id || req.user?.id || req.user?.userId;
 
@@ -21,6 +25,15 @@ const getAuthenticatedUserId = (req) => {
 
     return userId;
 };
+
+export const updateFcmToken = asyncHandler(async (req, res) => {
+    const data = await updateFcmTokenService({
+        userId: getAuthenticatedUserId(req),
+        fcmToken: req.body.fcmToken
+    });
+
+    res.status(200).json(new ApiResponse(200, data, 'FCM token saved successfully'));
+});
 
 export const getUserProfile = asyncHandler(async (req, res) => {
     const data = await getUserProfileService({ userId: getAuthenticatedUserId(req) });

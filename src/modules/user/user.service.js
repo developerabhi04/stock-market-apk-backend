@@ -35,6 +35,32 @@ const syncPrimaryBankDetails = (user) => {
     };
 };
 
+
+export const updateFcmTokenService = async ({ userId, fcmToken }) => {
+    if (!fcmToken) {
+        throw new ApiError(400, 'FCM token is required');
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+        throw new ApiError(404, 'User not found');
+    }
+
+    user.fcmToken = fcmToken;
+    await user.save();
+
+    return {
+        user: {
+            id: user._id,
+            fullName: user.fullName,
+            phoneNumber: user.phoneNumber,
+            fcmToken: user.fcmToken
+        }
+    };
+};
+
+
+
 export const getUserProfileService = async ({ userId }) => {
     const user = await User.findById(userId).select('-__v').lean();
 

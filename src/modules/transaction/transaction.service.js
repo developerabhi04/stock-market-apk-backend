@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import Transaction from './transaction.model.js';
 import User from '../user/user.model.js';
 import { ApiError } from '../../shared/utils/apiError.js';
+import { notifyUser } from '../notification/notification.service.js';
 
 export const getPendingPaymentsService = async ({ page = 1, limit = 20 }) => {
     const filter = { category: 'add_money', status: 'pending' };
