@@ -5,7 +5,6 @@ import { getSocketInstance } from './socket.js';
 import { sendPushNotification } from '../../shared/utils/firebase.js';
 
 
-// ✅ NEW: Central function — call this anywhere a user needs to be notified in real time
 export const notifyUser = async ({ userId, title, message, type = 'general', data = {}, adminId }) => {
     if (!adminId) {
         throw new ApiError(400, 'adminId is required to create notification');
@@ -34,12 +33,20 @@ export const notifyUser = async ({ userId, title, message, type = 'general', dat
 
     const user = await User.findById(userId).select('fcmToken').lean();
     if (user?.fcmToken) {
-        await sendPushNotification({
+        const pushResult = await sendPushNotification({
             token: user.fcmToken,
             title,
             body: message,
-            data: { type, ...data },
+            data: {
+                type: String(type), ...Object.fromEntries(
+                    Object.entries(data).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => [k, String(v)])
+                )
+            },
         });
+
+        if (!pushResult?.success) {
+            console.error('❌ Push notification failed:', pushResult);
+        }
     }
 
     return notification;
