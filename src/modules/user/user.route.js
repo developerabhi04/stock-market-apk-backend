@@ -9,7 +9,8 @@ import {
     setPrimaryBankAccount,
     getUserProfile,
     updateUserProfile,
-    checkPhoneExists
+    checkPhoneExists,
+    updateFcmToken
 } from './user.controller.js';
 
 const router = express.Router();
@@ -18,7 +19,7 @@ router.use(authenticate);
 
 router.get('/profile', getUserProfile);
 router.put('/profile', updateUserProfile);
-router.put('/fcm-token', authenticate, updateFcmToken)
+router.put('/fcm-token', updateFcmToken)
 
 router.get('/check-phone/:phoneNumber', checkPhoneExists);
 
