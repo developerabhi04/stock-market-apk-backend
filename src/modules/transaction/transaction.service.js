@@ -109,9 +109,13 @@ export const approvePaymentService = async ({ transactionId, verificationNote, a
             title: 'Deposit Successful ✅',
             message: `Your deposit of ₹${transaction.amount.toLocaleString('en-IN')} was successful and added to your wallet.`,
             type: 'payment',
-            data: { transactionId: transaction._id.toString(), amount: transaction.amount, status: 'approved' },
+            adminId,
+            data: {
+                transactionId: transaction._id.toString(),
+                amount: transaction.amount,
+                status: 'approved'
+            },
         });
-
 
         return {
             transaction,
@@ -158,9 +162,14 @@ export const rejectPaymentService = async ({ transactionId, reason, adminId }) =
         title: 'Deposit Rejected ❌',
         message: `Your deposit of ₹${transaction.amount.toLocaleString('en-IN')} was rejected. Reason: ${reason}`,
         type: 'payment',
-        data: { transactionId: transaction._id.toString(), amount: transaction.amount, status: 'rejected', reason },
+        adminId,
+        data: {
+            transactionId: transaction._id.toString(),
+            amount: transaction.amount,
+            status: 'rejected',
+            reason
+        },
     });
-
     return {
         transaction,
         message: 'Payment request rejected'
@@ -211,9 +220,14 @@ export const approveWithdrawalService = async ({
         title: 'Withdrawal Successful ✅',
         message: `Your withdrawal of ₹${transaction.amount.toLocaleString('en-IN')} has been processed. UTR: ${utrNumber}`,
         type: 'withdrawal',
-        data: { transactionId: transaction._id.toString(), amount: transaction.amount, status: 'approved', utrNumber },
+        adminId,
+        data: {
+            transactionId: transaction._id.toString(),
+            amount: transaction.amount,
+            status: 'approved',
+            utrNumber
+        },
     });
-
 
     return {
         transaction,
@@ -276,7 +290,13 @@ export const rejectWithdrawalService = async ({ transactionId, reason, adminId }
             title: 'Withdrawal Rejected ❌',
             message: `Your withdrawal of ₹${transaction.amount.toLocaleString('en-IN')} was rejected. Reason: ${reason}. The amount has been refunded to your wallet.`,
             type: 'withdrawal',
-            data: { transactionId: transaction._id.toString(), amount: transaction.amount, status: 'rejected', reason },
+            adminId,
+            data: {
+                transactionId: transaction._id.toString(),
+                amount: transaction.amount,
+                status: 'rejected',
+                reason
+            },
         });
 
 

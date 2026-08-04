@@ -7,7 +7,10 @@ import { sendPushNotification } from '../../shared/utils/firebase.js';
 
 // ✅ NEW: Central function — call this anywhere a user needs to be notified in real time
 export const notifyUser = async ({ userId, title, message, type = 'general', data = {}, adminId }) => {
-    // 1. Save to DB so it shows up in notification history/inbox
+    if (!adminId) {
+        throw new ApiError(400, 'adminId is required to create notification');
+    }
+
     const notification = await Notification.create({
         title,
         message,
@@ -17,7 +20,6 @@ export const notifyUser = async ({ userId, title, message, type = 'general', dat
         sentBy: adminId,
     });
 
-    // 2. Real-time Socket.IO emit — instant update if app is open
     const io = getSocketInstance();
     if (io) {
         io.to(userId.toString()).emit('notification', {
@@ -30,7 +32,6 @@ export const notifyUser = async ({ userId, title, message, type = 'general', dat
         });
     }
 
-    // 3. FCM push — reaches user even if app is closed/backgrounded
     const user = await User.findById(userId).select('fcmToken').lean();
     if (user?.fcmToken) {
         await sendPushNotification({
