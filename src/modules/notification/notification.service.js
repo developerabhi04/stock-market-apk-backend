@@ -74,15 +74,33 @@ export const sendNotificationToAllService = async ({
 }) => {
     validateNotificationPayload({ title, message });
 
-    const notification = await Notification.create({
-        title,
-        message,
-        type: type || 'general',
-        recipients: 'all',
-        sentBy,
-    });
+    const users = await User.find({
+        isActive: true,
+        isVerified: true,
+        fcmToken: { $ne: null },
+    }).select('_id fullName fcmToken').lean();
 
-    return { notification };
+    const results = await Promise.allSettled(
+        users.map((user) =>
+            notifyUser({
+                userId: user._id,
+                title,
+                message,
+                type: type || 'general',
+                adminId: sentBy,
+                data: {},
+            })
+        )
+    );
+
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    const failedCount = results.filter((r) => r.status === 'rejected').length;
+
+    return {
+        totalUsers: users.length,
+        successCount,
+        failedCount,
+    };
 };
 
 export const sendNotificationToUserService = async ({
@@ -100,13 +118,13 @@ export const sendNotificationToUserService = async ({
         throw new ApiError(404, 'User not found');
     }
 
-    const notification = await Notification.create({
+    const notification = await notifyUser({
+        userId,
         title,
         message,
         type: type || 'general',
-        recipients: 'individual',
-        userId,
-        sentBy,
+        adminId: sentBy,
+        data: {},
     });
 
     return {

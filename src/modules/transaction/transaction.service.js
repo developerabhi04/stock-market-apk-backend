@@ -218,7 +218,7 @@ export const approveWithdrawalService = async ({
     await notifyUser({
         userId: transaction.userId._id,
         title: 'Withdrawal Successful ✅',
-        message: `Your withdrawal of ₹${transaction.amount.toLocaleString('en-IN')} has been processed. UTR: ${utrNumber}`,
+        message: `Your withdrawal of ₹${transaction.amount.toLocaleString('en-IN')} has been processed.Transaction ID: ${utrNumber}`,
         type: 'withdrawal',
         adminId,
         data: {
