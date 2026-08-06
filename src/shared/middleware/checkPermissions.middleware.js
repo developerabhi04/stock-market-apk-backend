@@ -126,3 +126,34 @@ export const canManageCategories = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+
+export const canManageReferrals = async (req, res, next) => {
+    try {
+        if (req.admin.role === 'super_admin') {
+            return next();
+        }
+
+        const admin = await Admin.findById(
+            req.admin.adminId
+        ).select('allowedRoutes role');
+
+        if (!admin) {
+            throw new ApiError(401, 'Admin not found');
+        }
+
+        if (
+            admin.allowedRoutes?.includes(
+                '/dashboard/referrals'
+            )
+        ) {
+            return next();
+        }
+
+        throw new ApiError(
+            403,
+            'Referral management permission required'
+        );
+    } catch (error) {
+        next(error);
+    }
+};

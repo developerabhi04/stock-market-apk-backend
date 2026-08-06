@@ -5,6 +5,7 @@ import { generateOTP, sendOTP } from '../../shared/utils/otpService.js';
 import { generateToken } from '../../shared/utils/jwtService.js';
 import { ApiError } from '../../shared/utils/apiError.js';
 import { sanitizePhoneNumber, sanitizeOTP } from './auth.validator.js';
+import { applyReferralOnSignupService } from '../referral/referral.service.js'; // ✅ NEW
 
 const OTP_EXPIRY_MS = 5 * 60 * 1000;
 
@@ -112,7 +113,7 @@ export const verifyLoginOtpService = async ({ phoneNumber, otp }) => {
     };
 };
 
-export const verifySignupOtpService = async ({ fullName, phoneNumber, otp }) => {
+export const verifySignupOtpService = async ({ fullName, phoneNumber, otp, referralCode }) => { // ✅ NEW param
     const cleanPhoneNumber = sanitizePhoneNumber(phoneNumber);
     const cleanOtp = sanitizeOTP(otp);
 
@@ -162,6 +163,18 @@ export const verifySignupOtpService = async ({ fullName, phoneNumber, otp }) => 
         );
 
         await session.commitTransaction();
+
+        // ✅ NEW: apply referral (outside the signup transaction, best-effort)
+        if (referralCode) {
+            try {
+                await applyReferralOnSignupService({
+                    newUserId: user[0]._id,
+                    referralCode,
+                });
+            } catch (refError) {
+                console.error('⚠️ Referral apply failed (non-blocking):', refError?.message || refError);
+            }
+        }
 
         const token = generateToken({ userId: user[0]._id });
 

@@ -12,7 +12,7 @@ import marketRoutes from '../modules/market/market.route.js';
 import { notFound } from '../shared/middleware/errorHandler.middleware.js';
 import paymentConfigAdminRouter from '../modules/paymentConfig/paymentConfig.admin.route.js';
 import paymentConfigRouter from '../modules/paymentConfig/paymentConfig.route.js';
-
+import referralRoutes from '../modules/referral/referral.route.js';
 
 export const registerRoutes = (app) => {
     // Auth & User
@@ -36,6 +36,8 @@ export const registerRoutes = (app) => {
 
     // Reports
     app.use('/api/v1/admin', reportsRoutes);
+
+    app.use('/api/v1/referral',referralRoutes);
 
     app.use('/api/v1/payment-config', paymentConfigRouter);
 

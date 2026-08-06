@@ -29,6 +29,7 @@ const transactionSchema = new mongoose.Schema(
                 'investment_refund',
                 'investment_unlock',
                 'investment_renew',
+                'referral_bonus',
             ],
             required: true,
             index: true
