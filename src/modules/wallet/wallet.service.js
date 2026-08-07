@@ -73,6 +73,20 @@ export const addMoneyService = async ({
         }
     });
 
+    const io = getSocketInstance();
+    if (io) {
+        io.to('admins').emit('new_deposit_request', {
+            transactionId: transaction._id.toString(),
+            userId: transaction.userId.toString(),
+            amount: transaction.amount,
+            gateway: transaction.paymentDetails.gateway,
+            utrNumber: transaction.paymentDetails.utrNumber,
+            createdAt: transaction.createdAt,
+            type: 'deposit',
+            category: 'add_money',
+        });
+    }
+
     return {
         transaction: {
             id: transaction._id,
@@ -165,6 +179,23 @@ export const withdrawMoneyService = async ({
         );
 
         await session.commitTransaction();
+
+
+        const io = getSocketInstance();
+        if (io) {
+            io.to('admins').emit('new_withdrawal_request', {
+                transactionId: transaction._id.toString(),
+                userId: transaction.userId.toString(),
+                amount: transaction.amount,
+                bankName: transaction.withdrawalDetails.bankName,
+                accountLast4: transaction.withdrawalDetails.accountNumber.slice(-4),
+                createdAt: transaction.createdAt,
+                type: 'withdrawal',
+                category: 'withdrawal',
+            });
+        }
+
+
 
         return {
             transaction,

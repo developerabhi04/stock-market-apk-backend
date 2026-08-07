@@ -40,6 +40,10 @@ io.use((socket, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.userId = decoded.userId || decoded.id;
+    socket.role = decoded.role;
+    socket.isAdmin = decoded.role === 'admin' || decoded.role === 'super_admin';
+
+
     next();
   } catch (err) {
     next(new Error('Invalid or expired token'));
@@ -47,13 +51,23 @@ io.use((socket, next) => {
 });
 
 // ✅ NEW: Join each connected user to a private room named after their userId
-io.on('connection', (socket) => {
-  socket.join(socket.userId);
-  console.log(`🔌 User connected & joined room: ${socket.userId}`);
+// io.on('connection', (socket) => {
+//   socket.join(socket.userId);
+//   console.log(`🔌 User connected & joined room: ${socket.userId}`);
 
-  socket.on('disconnect', () => {
-    console.log(`❌ User disconnected: ${socket.userId}`);
-  });
+//   socket.on('disconnect', () => {
+//     console.log(`❌ User disconnected: ${socket.userId}`);
+//   });
+// });
+
+io.on('connection', (socket) => {
+  if (socket.isAdmin) {
+    socket.join('admins');
+    console.log(`🔌 Admin connected & joined room: ${socket.userId}`);
+  } else {
+    socket.join(socket.userId);
+    console.log(`🔌 User connected & joined room: ${socket.userId}`);
+  }
 });
 
 // ✅ NEW: Make `io` accessible anywhere in the app (services/controllers)
