@@ -96,8 +96,11 @@ export const maybeRewardReferralOnRechargeService = async ({
 }) => {
     const amount = Number(rechargeAmount);
 
-    if (!Number.isFinite(amount)) {
-        throw new ApiError(400, 'Invalid recharge amount');
+    if (!Number.isFinite(amount) || amount <= 0) {
+        throw new ApiError(
+            400,
+            'Invalid recharge amount'
+        );
     }
 
     if (amount < MIN_FIRST_RECHARGE_FOR_BONUS) {
@@ -112,37 +115,53 @@ export const maybeRewardReferralOnRechargeService = async ({
     }
 
     const userQuery = User.findById(userId);
-    const user = await getSessionQuery(userQuery, session);
+    const user = await getSessionQuery(
+        userQuery,
+        session
+    );
 
     if (!user) {
-        throw new ApiError(404, 'Recharge user not found');
+        throw new ApiError(
+            404,
+            'Recharge user not found'
+        );
     }
 
-    if (!user.referredBy || user.referralRewardGiven) {
+    /*
+     * If the user was not referred, there is no referral reward.
+     * If the reward was already given, do not reward again.
+     */
+    if (
+        !user.referredBy ||
+        user.referralRewardGiven
+    ) {
         return null;
     }
 
     /*
-     * The current deposit has already been changed to completed.
-     * Exclude the current transaction and search for older approved
-     * add_money transactions.
+     * The current recharge has already been changed
+     * to completed by approvePaymentService().
+     *
+     * Check whether this user has any other completed
+     * add_money transaction. If yes, this is not the
+     * first approved recharge, so no referral reward.
      */
-    const previousApprovedRechargeQuery = Transaction.exists({
-        userId,
-        category: 'add_money',
-        status: 'completed',
-        _id: { $ne: transactionId },
-    });
+    const previousApprovedRechargeQuery =
+        Transaction.exists({
+            userId,
+            category: 'add_money',
+            status: 'completed',
+            _id: {
+                $ne: transactionId,
+            },
+        });
 
-    const previousApprovedRecharge = await getSessionQuery(
-        previousApprovedRechargeQuery,
-        session
-    );
+    const previousApprovedRecharge =
+        await getSessionQuery(
+            previousApprovedRechargeQuery,
+            session
+        );
 
-    /*
-     * The reward is only for the first approved recharge.
-     * Therefore, if any older approved recharge exists, do not reward.
-     */
     if (previousApprovedRecharge) {
         return null;
     }
@@ -152,43 +171,102 @@ export const maybeRewardReferralOnRechargeService = async ({
         status: 'pending',
     });
 
-    const referral = await getSessionQuery(referralQuery, session);
+    const referral = await getSessionQuery(
+        referralQuery,
+        session
+    );
 
     if (!referral) {
         return null;
     }
 
-    const referrerQuery = User.findById(user.referredBy);
-    const referrer = await getSessionQuery(referrerQuery, session);
+    const referrerQuery = User.findById(
+        user.referredBy
+    );
+
+    const referrer = await getSessionQuery(
+        referrerQuery,
+        session
+    );
 
     if (!referrer) {
-        throw new ApiError(400, 'Referral owner no longer exists');
+        throw new ApiError(
+            400,
+            'Referral owner no longer exists'
+        );
     }
 
-    if (referrer._id.toString() === user._id.toString()) {
-        throw new ApiError(400, 'Invalid self-referral relationship');
+    if (
+        referrer._id.toString() ===
+        user._id.toString()
+    ) {
+        throw new ApiError(
+            400,
+            'Invalid self-referral relationship'
+        );
     }
 
-    const refereeBalanceBefore = Number(user.walletBalance || 0);
-    const referrerBalanceBefore = Number(referrer.walletBalance || 0);
+    const refereeBalanceBefore = Number(
+        user.walletBalance || 0
+    );
 
-    user.walletBalance =
-        refereeBalanceBefore + REFERRAL_BONUS_AMOUNT;
+    const referrerBalanceBefore = Number(
+        referrer.walletBalance || 0
+    );
 
+    const refereeBalanceAfter =
+        refereeBalanceBefore +
+        REFERRAL_BONUS_AMOUNT;
+
+    const referrerBalanceAfter =
+        referrerBalanceBefore +
+        REFERRAL_BONUS_AMOUNT;
+
+    /*
+     * Update referee wallet.
+     */
+    user.walletBalance = refereeBalanceAfter;
     user.referralRewardGiven = true;
 
-    referrer.walletBalance =
-        referrerBalanceBefore + REFERRAL_BONUS_AMOUNT;
+    /*
+     * Update referrer wallet.
+     */
+    referrer.walletBalance = referrerBalanceAfter;
 
-    await user.save(session ? { session } : undefined);
-    await referrer.save(session ? { session } : undefined);
+    await user.save(
+        session ? { session } : undefined
+    );
 
+    await referrer.save(
+        session ? { session } : undefined
+    );
+
+    /*
+     * Mark the referral as rewarded.
+     */
     referral.status = 'rewarded';
-    referral.rewardAmount = REFERRAL_BONUS_AMOUNT;
+    referral.rewardAmount =
+        REFERRAL_BONUS_AMOUNT;
     referral.triggerRechargeAmount = amount;
     referral.rewardedAt = new Date();
 
-    await referral.save(session ? { session } : undefined);
+    await referral.save(
+        session ? { session } : undefined
+    );
+
+    /*
+     * Two transactions are created in one operation.
+     * ordered: true is required when using a session
+     * with multiple documents.
+     */
+    const transactionOptions = session
+        ? {
+            session,
+            ordered: true,
+        }
+        : {
+            ordered: true,
+        };
 
     await Transaction.create(
         [
@@ -198,7 +276,7 @@ export const maybeRewardReferralOnRechargeService = async ({
                 category: 'referral_bonus',
                 amount: REFERRAL_BONUS_AMOUNT,
                 balanceBefore: refereeBalanceBefore,
-                balanceAfter: user.walletBalance,
+                balanceAfter: refereeBalanceAfter,
                 status: 'completed',
                 description:
                     'Referral bonus for first approved recharge',
@@ -208,15 +286,17 @@ export const maybeRewardReferralOnRechargeService = async ({
                     role: 'referee',
                 },
             },
+
             {
                 userId: referrer._id,
                 type: 'credit',
                 category: 'referral_bonus',
                 amount: REFERRAL_BONUS_AMOUNT,
                 balanceBefore: referrerBalanceBefore,
-                balanceAfter: referrer.walletBalance,
+                balanceAfter: referrerBalanceAfter,
                 status: 'completed',
-                description: `Referral bonus: ${user.fullName} completed first approved recharge`,
+                description:
+                    `Referral bonus: ${user.fullName} completed first approved recharge`,
                 metadata: {
                     referralId: referral._id,
                     sourceTransactionId: transactionId,
@@ -224,7 +304,7 @@ export const maybeRewardReferralOnRechargeService = async ({
                 },
             },
         ],
-        session ? { session } : undefined
+        transactionOptions
     );
 
     return {
