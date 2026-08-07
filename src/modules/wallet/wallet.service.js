@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import User from '../user/user.model.js';
 import Transaction from '../transaction/transaction.model.js';
 import { ApiError } from '../../shared/utils/apiError.js';
+import { getSocketInstance } from '../notification/socket.js';
 
 export const getWalletBalanceService = async ({ userId }) => {
     const user = await User.findById(userId).select('walletBalance').lean();
@@ -106,7 +107,7 @@ export const withdrawMoneyService = async ({
     accountNumber,
     ifscCode,
     accountHolderName,
-    bankName
+    bankName,
 }) => {
     if (!amount || Number(amount) < 100) {
         throw new ApiError(400, 'Minimum withdrawal amount is ₹100');
@@ -120,8 +121,11 @@ export const withdrawMoneyService = async ({
     session.startTransaction({
         readPreference: 'primary',
         readConcern: { level: 'majority' },
-        writeConcern: { w: 'majority' }
+        writeConcern: { w: 'majority' },
     });
+
+    let transaction;
+    let balanceAfter;
 
     try {
         const user = await User.findById(userId).session(session).read('primary');
@@ -132,7 +136,7 @@ export const withdrawMoneyService = async ({
 
         if (user.bankAccounts && user.bankAccounts.length > 0) {
             const bankAccountExists = user.bankAccounts.some(
-                (account) => account.accountNumber === accountNumber
+                (account) => account.accountNumber === accountNumber,
             );
 
             if (!bankAccountExists) {
@@ -143,17 +147,17 @@ export const withdrawMoneyService = async ({
         if (user.walletBalance < Number(amount)) {
             throw new ApiError(
                 400,
-                `Insufficient withdrawable balance. Available: ₹${user.walletBalance.toFixed(2)}`
+                `Insufficient withdrawable balance. Available: ₹${user.walletBalance.toFixed(2)}`,
             );
         }
 
         const balanceBefore = user.walletBalance;
-        const balanceAfter = balanceBefore - Number(amount);
+        balanceAfter = balanceBefore - Number(amount);
 
         user.walletBalance = balanceAfter;
         await user.save({ session });
 
-        const [transaction] = await Transaction.create(
+        const [createdTx] = await Transaction.create(
             [
                 {
                     userId: user._id,
@@ -167,49 +171,52 @@ export const withdrawMoneyService = async ({
                         accountNumber,
                         ifscCode: ifscCode.toUpperCase(),
                         accountHolderName,
-                        bankName
+                        bankName,
                     },
                     description: `Withdrawal to ${bankName} (${accountNumber.slice(-4)}) - Awaiting admin approval`,
                     adminAction: {
-                        actionType: 'pending'
-                    }
-                }
+                        actionType: 'pending',
+                    },
+                },
             ],
-            { session }
+            { session },
         );
 
+        transaction = createdTx;
+
         await session.commitTransaction();
-
-
-        const io = getSocketInstance();
-        if (io) {
-            io.to('admins').emit('new_withdrawal_request', {
-                transactionId: transaction._id.toString(),
-                userId: transaction.userId.toString(),
-                amount: transaction.amount,
-                bankName: transaction.withdrawalDetails.bankName,
-                accountLast4: transaction.withdrawalDetails.accountNumber.slice(-4),
-                createdAt: transaction.createdAt,
-                type: 'withdrawal',
-                category: 'withdrawal',
-            });
-        }
-
-
-
-        return {
-            transaction,
-            newWalletBalance: balanceAfter,
-            newTotalBalance: balanceAfter,
-            message:
-                'Withdrawal request submitted successfully. Amount will be transferred within 1-3 business days after approval.'
-        };
     } catch (error) {
-        await session.abortTransaction();
+        // ✅ Only abort if still in a transaction
+        if (session.inTransaction()) {
+            await session.abortTransaction();
+        }
         throw error;
     } finally {
         session.endSession();
     }
+
+    // ✅ Emit socket event AFTER commit + session end
+    const io = getSocketInstance();
+    if (io) {
+        io.to('admins').emit('new_withdrawal_request', {
+            transactionId: transaction._id.toString(),
+            userId: transaction.userId.toString(),
+            amount: transaction.amount,
+            bankName: transaction.withdrawalDetails.bankName,
+            accountLast4: transaction.withdrawalDetails.accountNumber.slice(-4),
+            createdAt: transaction.createdAt,
+            type: 'withdrawal',
+            category: 'withdrawal',
+        });
+    }
+
+    return {
+        transaction,
+        newWalletBalance: balanceAfter,
+        newTotalBalance: balanceAfter,
+        message:
+            'Withdrawal request submitted successfully. Amount will be transferred within 1-3 business days after approval.',
+    };
 };
 
 export const getTransactionsService = async ({ userId, page = 1, limit = 20, type, category }) => {
